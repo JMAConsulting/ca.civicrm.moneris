@@ -42,13 +42,19 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $this->_paymentProcessor = $paymentProcessor;
     $this->_processorName = ts('Moneris');
 
+    $currencyID = CRM_Core_Config::singleton()->defaultCurrency;
+    if (!in_array($currencyID, array('USD', 'CAD'))) {
+      return self::error('Invalid configuration:' . $currencyID . ', you must use currency $CAD with Moneris');
+    }
+
     // live or test
     $isTest = ('live' !== $mode);
-    $this->_monerisAPI = CRM_Moneris_API::singleton(
-      $this->_paymentProcessor['user_name'],
+    $this->_monerisAPI = CRM_Civimoodle_API::singleton(
+      $this->_paymentProcessor['signature'],
       $this->_paymentProcessor['password'],
       TRUE)
-      ->isTest($isTest);
+      ->isTest($isTest)
+      ->setProcCountryCode($currencyID);
   }
 
   /**

@@ -1,0 +1,45 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
+        "This file is @generated automatically"
+    ],
+    "hash": "a9cba253da9f856f14afe139fd945297",
+    "content-hash": "798ab1507c8d9c52e7a34e081b95d3a4",
+    "packages": [
+        {
+            "name": "monish/moneris",
+            "version": "dev-master",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/monishdeb/eCommerce-Unified-API-PHP.git",
+                "reference": "a17eb3306b68b5264b44cfb2c15cbb089e90a58d"
+            },
+            "require": {
+                "ext-curl": "*",
+                "php": ">=5.5"
+            },
+            "type": "library",
+            "autoload": {
+                "classmap": [
+                    "mpgClasses.php"
+                ]
+            },
+            "description": "Unified PHP SDK for Moneris",
+            "time": "2018-01-10 15:22:50"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {
+        "monish/moneris": 20
+    },
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=5.5",
+        "ext-curl": "*"
+    },
+    "platform-dev": []
+}
