@@ -42,19 +42,13 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $this->_paymentProcessor = $paymentProcessor;
     $this->_processorName = ts('Moneris');
 
-    $currencyID = CRM_Core_Config::singleton()->defaultCurrency;
-    if (!in_array($currencyID, array('USD', 'CAD'))) {
-      return self::error('Invalid configuration:' . $currencyID . ', you must use currency $CAD with Moneris');
-    }
-
     // live or test
     $isTest = ('live' !== $mode);
-    $this->_monerisAPI = CRM_Civimoodle_API::singleton(
-      $this->_paymentProcessor['signature'],
+    $this->_monerisAPI = CRM_Moneris_API::singleton(
+      $this->_paymentProcessor['user_name'],
       $this->_paymentProcessor['password'],
       TRUE)
-      ->isTest($isTest)
-      ->setProcCountryCode($currencyID);
+      ->isTest($isTest);
   }
 
   /**
@@ -125,6 +119,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       'crypt_type' => '7',
       // 'cust_id' => $params['contactID'],
     );
+    if ($params['currencyID'] != 'CAD') {
+      $txnArray['mcp_currency_code'] = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_Currency', $params['currencyID'], 'numeric_code', 'name');
+      $txnArray['mcp_amount'] = (100 * $txnArray['amount']);
+    }
     // deal with recurring contributions
     // my first contibution will be only a card verification
     if ($isRecur) {
@@ -279,7 +277,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   function checkConfig() {
     $error = array();
 
-    if (empty($this->_paymentProcessor['signature'])) {
+    if (empty($this->_paymentProcessor['user_name'])) {
       $error[] = ts('Store ID is not set in the Administer CiviCRM &raquo; System Settings &raquo; Payment Processors.');
     }
 

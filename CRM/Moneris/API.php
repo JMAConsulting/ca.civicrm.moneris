@@ -33,13 +33,6 @@ class CRM_Moneris_API {
    *
    * @var array
    */
-  protected $_apiToken;
-
-  /**
-   * Search parameters later formated into API url arguments
-   *
-   * @var array
-   */
   protected $_server;
 
   protected $_custInfo;
@@ -111,10 +104,6 @@ class CRM_Moneris_API {
     return $this->sendRequest($mpgTxn);
   }
 
-  public function setProcCountryCode($currencyID) {
-    $this->_procCountryCode = ($currencyID == 'USD') ? 'US' : 'CA';
-  }
-
   public function sendRecurTransaction($trxnParams, $recurParams) {
     $mpgRecur = new mpgRecur($recurParams);
 
@@ -135,11 +124,11 @@ class CRM_Moneris_API {
    */
   public function sendRequest($apiObj) {
     $mpgRequest = new mpgRequest($apiObj);
-    $mpgRequest->setProcCountryCode($this->_procCountryCode);
     if ($this->_isTest) {
-      $this->setTestMode(TRUE);
+      $mpgRequest->setTestMode(TRUE);
     }
     $response = new mpgHttpsPost($this->_storeID, $this->_apiToken, $mpgRequest);
+    $response = $response->getMpgResponse();
 
     return array(
       self::isError($response),
