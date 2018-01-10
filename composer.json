@@ -1,0 +1,16 @@
+{
+  "name": "jma/moneris",
+  "description": "Unified PHP SDK for Moneris",
+  "type": "library",
+  "require": {
+    "php": ">=5.5",
+    "ext-curl": "*",
+    "monish/moneris": "dev-master"
+  },
+  "repositories": [
+    {
+      "type": "git",
+      "url": "https://github.com/monishdeb/eCommerce-Unified-API-PHP.git"
+    }
+  ]
+}
