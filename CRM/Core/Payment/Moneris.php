@@ -88,10 +88,8 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
         [contact_type] => Individual
         [geo_coord_id] => 1 */
 
-    //this code based on Moneris example code #
-    //create an mpgCustInfo object
-    $mpgCustInfo = new mpgCustInfo();
-    //call set methods of the mpgCustinfo object
+
+    // get main email
     if (empty($params['email'])) {
       if (!empty($params['contactID'])) {
         $api_request = array('version' => 3, 'sequential' => 1, 'is_billing' => 1, 'contact_id' => $params['contactID']);
@@ -111,6 +109,81 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     else {
       $email = $params['email'];
     }
+
+    // format credit card expiry date
+    $expiry_string = sprintf('%04d%02d', $params['year'], $params['month']);
+
+    // TODO : is there already a token for this contact ?
+    $token = False;
+    /*if (!empty($params['contactID'])) {
+      $result = civicrm_api3('PaymentToken', 'get', array(
+        'sequential' => 1,
+        'contact_id' => 9,
+      ));
+      //...
+    }*/
+
+    if ($token) {
+    }
+    else {
+      // create a new vault credit card and get a corresponding token
+      $txnArray=array(
+        'type'=>'res_add_cc',
+        //'cust_id'=>'CiviCRM-'.$params['contactID'],
+        //'phone'=>$phone,
+        //'email'=>$email,
+        //'note'=>$note,
+        'pan'=>$params['credit_card_number'],
+        'expdate'=>substr($expiry_string, 2, 4),
+        'crypt_type'=>7,
+      );
+      $mpgTxn = new mpgTransaction($txnArray);
+      $mpgRequest = $this->newMpgRequest($mpgTxn);
+      $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
+      $mpgResponse = $mpgHttpPost->getMpgResponse();
+
+
+      // FIXME: add a helper function for this instead of duplicating
+      $params['trxn_result_code'] = $mpgResponse->getResponseCode();
+      if (self::isError($mpgResponse)) {
+        if ($params['trxn_result_code']) {
+          return self::error($mpgResponse);
+        }
+        else {
+          return self::error('No reply from server - check your settings &/or try again');
+        }
+      }
+      /* Check for application errors */
+      $result = self::checkResult($mpgResponse);
+      if (is_a($result, 'CRM_Core_Error')) {
+        return $result;
+      }
+
+      /* Success */
+      $dataKey = $mpgResponse->getDataKey();
+
+      // FIXME: shouldn't we have contactID in every case ??
+      if (!empty($params['contactID'])) {
+        $number = $params['credit_card_number'];
+        $result = civicrm_api3('PaymentToken', 'create', array(
+          'contact_id' => $params['contactID'],
+          'email' => $email,
+          'token' => $dataKey,
+          'payment_processor_id' => $this->_paymentProcessor['id'],
+          'expiry_date' => $params['year'] . '-' . $params['month'],
+          'billing_first_name' => $params['billing_first_name'],
+          'billing_last_name' => $params['billing_last_name'],
+          'masked_account_number' => str_repeat("*", strlen($number) - 4) . substr($number, strlen($number) - 4),
+          'ip_address' => $_SERVER['REMOTE_ADDR'],
+        ));
+      }
+    }
+
+    //this code based on Moneris example code #
+
+    //create an mpgCustInfo object
+    $mpgCustInfo = new mpgCustInfo();
+    //call set methods of the mpgCustinfo object
     if (!empty($email)) {
       $mpgCustInfo->setEmail($email);
     }
@@ -128,14 +201,15 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $mpgCustInfo->setBilling($billing);
     // set orderid as invoiceID to help match things up with Moneris later
     $my_orderid = $params['invoiceID'];
-    $expiry_string = sprintf('%04d%02d', $params['year'], $params['month']);
     $amount = CRM_Utils_Rule::cleanMoney($params['amount']);
     $txnArray = array(
-      'type' => 'purchase',
+      'type' => 'res_purchase_cc',
+      'data_key' => $dataKey,
       'order_id' => $my_orderid,
       'amount' => sprintf('%01.2f', $amount),
-      'pan' => $params['credit_card_number'],
-      'expdate' => substr($expiry_string, 2, 4),
+      //'pan' => $params['credit_card_number'],
+      //'expdate' => substr($expiry_string, 2, 4),
+
       'crypt_type' => '7',
       // 'cust_id' => $params['contactID'],
     );
