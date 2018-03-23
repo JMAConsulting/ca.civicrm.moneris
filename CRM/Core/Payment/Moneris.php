@@ -155,11 +155,11 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     //set the customer info (level 3 data) for this transaction
     $mpgTxn->setCustInfo($mpgCustInfo);
     //create a mpgRequest object passing the transaction object
-    $mpgRequest = new mpgRequest($mpgTxn);
+    $mpgRequest = $this->newMpgRequest($mpgTxn);
     // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
     // create mpgHttpsPost object which does an https post ##
     // extra 'server' parameter added to library
-    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest, $this->_profile['server']);
+    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
     // watchdog('moneris_civicrm_ca', 'Response: <pre>!response</pre>', array('!response' => print_r($mpgResponse, TRUE)), WATCHDOG_NOTICE);
@@ -219,9 +219,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       $mpgTxn = new mpgTransaction($txnArray);
       // set the Recur Object to mpgRecur
       $mpgTxn->setRecur($mpgRecur);
-      $mpgRequest = new mpgRequest($mpgTxn);
+      $mpgRequest = $this->newMpgRequest($mpgTxn);
       // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
-      $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest, $this->_profile['server']);
+      $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
       // get an mpgResponse object
       $mpgResponse = $mpgHttpPost->getMpgResponse();
       // watchdog('moneris_civicrm_ca', 'Response: <pre>!response</pre>', array('!response' => print_r($mpgResponse, TRUE)), WATCHDOG_NOTICE);
@@ -333,5 +333,15 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       return NULL;
     }
   }
+
+  function newMpgRequest($mpgTxn) {
+    $mpgRequest = new mpgRequest($mpgTxn);
+    $mpgRequest->setProcCountryCode("CA"); //"US" for sending transaction to US environment, we might want to support it one day
+    if ($this->_profile['server'] == 'test') {
+      $mpgRequest->setTestMode(true); //false or comment out this line for production transactions
+    }
+    return $mpgRequest;
+  }
+
 }
 
