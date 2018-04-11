@@ -226,7 +226,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
+    //use the setCustInfo method of mpgTransaction object to
+    //set the customer info (level 3 data) for this transaction
+    $mpgTxn->setCustInfo($mpgCustInfo);
+    //create a mpgRequest object passing the transaction object
     $mpgRequest = $this->newMpgRequest($mpgTxn);
+    // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
+    // create mpgHttpsPost object which does an https post ##
+    // extra 'server' parameter added to library
     $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
