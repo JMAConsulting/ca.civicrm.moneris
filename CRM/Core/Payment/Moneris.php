@@ -68,6 +68,15 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     return self::$_singleton[$processorName];
   }
 
+  /**
+   * Should the first payment date be configurable when setting up back office recurring payments.
+   * In the case of Authorize.net this is an option
+   * @return bool
+   */
+  protected function supportsFutureRecurStartDate() {
+    return TRUE;
+  }
+
   function doDirectPayment(&$params) {
 //print_r($params); die();
     // watchdog('moneris_civicrm_ca', 'Params: <pre>!params</pre>', array('!params' => print_r($params, TRUE)), WATCHDOG_NOTICE);
@@ -279,6 +288,17 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     return $params;
   }
 
+  /**
+   * @param string $message
+   * @param array $params
+   *
+   * @return bool|object
+   */
+  public function cancelSubscription(&$message = '', $params = array()) {
+    // TODO: make it call the Moneris vault and return TRUE when success
+    return FALSE;
+  }
+
   function isError(&$response) {
     $responseCode = $response->getResponseCode();
     if (is_null($responseCode)) {
@@ -375,4 +395,3 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   }
 
 }
-
