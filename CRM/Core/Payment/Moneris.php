@@ -216,7 +216,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       // 'cust_id' => $params['contactID'],
     );
     // deal with recurring contributions
-    // my first contibution will be only a card verification
+    // the contribution will be only a card verification
     if ($isRecur) {
       $txnArray['type'] = 'res_card_verification_cc';
       unset($txnArray['amount']);
@@ -226,19 +226,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
-
-    //use the setCustInfo method of mpgTransaction object to
-    //set the customer info (level 3 data) for this transaction
-    //$mpgTxn->setCustInfo($mpgCustInfo);
-    //create a mpgRequest object passing the transaction object
     $mpgRequest = $this->newMpgRequest($mpgTxn);
-    // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
-    // create mpgHttpsPost object which does an https post ##
-    // extra 'server' parameter added to library
     $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
-    // watchdog('moneris_civicrm_ca', 'Response: <pre>!response</pre>', array('!response' => print_r($mpgResponse, TRUE)), WATCHDOG_NOTICE);
     $responseCode = $mpgResponse->getResponseCode();
     if (self::isError($mpgResponse)) {
       if ($responseCode) {
@@ -264,79 +255,18 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $params['gross_amount'] = $mpgResponse->getTransAmount();
     $params['payment_status_id'] = array_search('Completed', $statuses);
 
-/*    $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
     // todo: above assignment seems to be ignored, not getting stored in the civicrm_financial_trxn table
-    $params['trxn_id'] = $mpgResponse->getTxnNumber();
-    $params['gross_amount'] = $mpgResponse->getTransAmount();*/
+    // check if this still true
+
     // add a recurring payment schedule if requested
     // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
     if ($isRecur && MONERIS_DO_RECURRING) {
-      //Recur Variables
-      $recurUnit     = $params['frequency_unit'];
-      $recurInterval = $params['frequency_interval'];
-      $day           = 60 * 60 * 24;
-      $next          = time();
-      // earliest start date is tomorrow
-      do {
-        $next = $next + $day;
-        $date = getdate($next);
-      } while ($date['mday'] != 20);
-      // next payment in moneris required format
-      $startDate = date("Y/m/d", $next);
-      /*$numRecurs = !empty($params['installments']) ? $params['installments'] : 99;
-      //$startNow = 'true'; -- setting start now to false will mean the main transaction doesn't happen!
-      $recurAmount = sprintf('%01.2f', $amount);
-      //Create an array with the recur variables
-      $recurArray = array(
-        'recur_unit' => $recurUnit,
-        'start_date' => $startDate,
-        'num_recurs' => $numRecurs,
-        'start_now' => 'false',
-        'period' => $recurInterval,
-        'recur_amount' => $recurAmount,
-        'amount' => $recurAmount,
-      );*/
 
-      // ...
+      // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;
-      $params['start_date'] = $startDate;
 
       // status pending because the payment will be done later
       $params['payment_status_id'] = array_search('Pending', $statuses);
-
-      /*$mpgRecur = new mpgRecur($recurArray);
-      $txnArray['type'] = 'purchase';
-      // $txnArray['amount'] = $recurAmount;
-      $mpgTxn = new mpgTransaction($txnArray);
-      // set the Recur Object to mpgRecur
-      $mpgTxn->setRecur($mpgRecur);
-      $mpgRequest = $this->newMpgRequest($mpgTxn);
-      // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
-      $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
-      // get an mpgResponse object
-      $mpgResponse = $mpgHttpPost->getMpgResponse();
-      // watchdog('moneris_civicrm_ca', 'Response: <pre>!response</pre>', array('!response' => print_r($mpgResponse, TRUE)), WATCHDOG_NOTICE);
-      $params['trxn_result_code'] = $mpgResponse->getResponseCode();
-      if (self::isError($mpgResponse)) {
-        if ($params['trxn_result_code']) {
-          return self::error($mpgResponse);
-        }
-        else {
-          return self::error('No reply from server - check your settings &/or try again');
-        }
-      }
-      // Check for application errors
-      $result = self::checkResult($mpgResponse);
-      if (is_a($result, 'CRM_Core_Error')) {
-        return $result;
-      }
-
-      // Success
-      $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
-      $params['trxn_id'] = $mpgResponse->getTxnNumber();
-      $params['gross_amount'] = $mpgResponse->getTransAmount();*/
-    }
-    else {
     }
 
     return $params;

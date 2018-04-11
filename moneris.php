@@ -192,11 +192,6 @@ function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
                               );
     if (_moneris_civicrm_is_moneris($payment_processor_id)) {
       switch ($objectName) {
-        case 'Contribution': // cc contribution, test if it's been set to status 2 on a recurring contribution
-          /*if ((2 == $params['contribution_status_id']) && !empty($params['contribution_recur_id'])) {
-            $params['contribution_status_id'] = 1;
-        }*/
-          break;
         case 'ContributionRecur':
           // calculate the date of the next schedule contribution
           $params['contribution_status_id'] = 5;
