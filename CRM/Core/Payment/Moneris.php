@@ -214,55 +214,30 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // set orderid as invoiceID to help match things up with Moneris later
     $my_orderid = $params['invoiceID'];
     $amount = CRM_Utils_Rule::cleanMoney($params['amount']);
-    $txnArray = array(
-      'type' => 'res_purchase_cc',
-      'data_key' => $dataKey,
-      'order_id' => $my_orderid,
-      'amount' => sprintf('%01.2f', $amount),
-      //'pan' => $params['credit_card_number'],
-      //'expdate' => substr($expiry_string, 2, 4),
-      'crypt_type' => '7',
-      // 'cust_id' => $params['contactID'],
-    );
-    // deal with recurring contributions
-    // the contribution will be only a card verification
+
+
+    // now that we have a token and customer info
+    // ensure that the credit card is good or process the payment
+
     if ($isRecur) {
-      $txnArray['type'] = 'res_card_verification_cc';
-      unset($txnArray['amount']);
-    }
-    // Allow further manipulation of params via custom hooks
-    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray);
-
-    //create a transaction object passing the hash created above
-    $mpgTxn = new mpgTransaction($txnArray);
-    //use the setCustInfo method of mpgTransaction object to
-    //set the customer info (level 3 data) for this transaction
-    $mpgTxn->setCustInfo($mpgCustInfo);
-    //create a mpgRequest object passing the transaction object
-    $mpgRequest = $this->newMpgRequest($mpgTxn);
-    // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
-    // create mpgHttpsPost object which does an https post ##
-    // extra 'server' parameter added to library
-    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
-    // get an mpgResponse object
-    $mpgResponse = $mpgHttpPost->getMpgResponse();
-    $responseCode = $mpgResponse->getResponseCode();
-    if (self::isError($mpgResponse)) {
-      if ($responseCode) {
-        return self::error($mpgResponse);
-      }
-      else {
-        return self::error('No reply from server - check your settings &/or try again');
-      }
-    }
-    /* Check for application errors */
-
-    $result = self::checkResult($mpgResponse);
-    if (is_a($result, 'CRM_Core_Error')) {
-      return $result;
+      // only check the credit card
+      // payment will be done later by a cron task (could be done in a future day)
+      $result = self::cardVerification(array(
+        'data_key' => $dataKey,
+        'order_id' => $my_orderid
+      ));
+    } else {
+      $result = self::processTokenPayment(array(
+        'data_key' => $dataKey,
+        'order_id' => $my_orderid,
+        'amount' => sprintf('%01.2f', $amount),
+        'cust_info' => $mpgCustInfo,
+      ));
     }
 
-    /* Success */
+    if ($result !== TRUE) return $result;
+
+    // SUCCESS
 
     $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
 
@@ -271,12 +246,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $params['gross_amount'] = $mpgResponse->getTransAmount();
     $params['payment_status_id'] = array_search('Completed', $statuses);
 
-    // todo: above assignment seems to be ignored, not getting stored in the civicrm_financial_trxn table
-    // check if this still true
-
     // add a recurring payment schedule if requested
     // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
-    if ($isRecur && MONERIS_DO_RECURRING) {
+    if ($isRecur) {
 
       // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;
@@ -296,8 +268,105 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
    */
   public function cancelSubscription(&$message = '', $params = array()) {
     // TODO: make it call the Moneris vault and return TRUE when success
+    // also change $message content - see AuthorizeNet for an example
     return FALSE;
   }
+
+  public function cardVerification($params = array()) {
+    require_once 'CRM/Moneris/mpgClasses.php';
+
+    $txnArray = array(
+      'type' => 'res_card_verification_cc',
+      'data_key' => $params['data_key'],
+      'order_id' => $params['order_id'],
+      'crypt_type' => '7',
+    );
+    // Allow further manipulation of params via custom hooks
+    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray);
+
+    //create a transaction object passing the hash created above
+    $mpgTxn = new mpgTransaction($txnArray);
+    $mpgRequest = $this->newMpgRequest($mpgTxn);
+    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
+
+    // get an mpgResponse object
+    $mpgResponse = $mpgHttpPost->getMpgResponse();
+    $responseCode = $mpgResponse->getResponseCode();
+
+    if (self::isError($mpgResponse)) {
+      if ($responseCode) {
+        return self::error($mpgResponse);
+      }
+      else {
+        return self::error('No reply from server - check your settings &/or try again');
+      }
+    }
+    /* Check for application errors */
+
+    $result = self::checkResult($mpgResponse);
+    if (is_a($result, 'CRM_Core_Error')) {
+      return $result;
+    }
+
+    /* Success */
+    return TRUE;
+  }
+
+  // might become a supported core function but for now just create our own function name
+  public function processTokenPayment($params = array()) {
+    require_once 'CRM/Moneris/mpgClasses.php';
+
+    $txnArray = array(
+      'type' => 'res_purchase_cc',
+      'data_key' => $dataKey,
+      'order_id' => $my_orderid,
+      'amount' => sprintf('%01.2f', $amount),
+      //'pan' => $params['credit_card_number'],
+      //'expdate' => substr($expiry_string, 2, 4),
+      'crypt_type' => '7',
+      // 'cust_id' => $params['contactID'],
+    );
+
+    //create a transaction object passing the hash created above
+    $mpgTxn = new mpgTransaction($txnArray);
+
+    // add customer information if any
+    if (!empty($params['cust_info'])) {
+      $mpgTxn->setCustInfo($params['cust_info']);
+    }
+
+    $mpgRequest = $this->newMpgRequest($mpgTxn);
+    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
+
+    // get an mpgResponse object
+    $mpgResponse = $mpgHttpPost->getMpgResponse();
+    $responseCode = $mpgResponse->getResponseCode();
+
+    if (self::isError($mpgResponse)) {
+      if ($responseCode) {
+        return self::error($mpgResponse);
+      }
+      else {
+        return self::error('No reply from server - check your settings &/or try again');
+      }
+    }
+    /* Check for application errors */
+
+    $result = self::checkResult($mpgResponse);
+    if (is_a($result, 'CRM_Core_Error')) {
+      return $result;
+    }
+
+    /* Success */
+    return TRUE;
+  }
+
+  // might become a supported core function but for now just create our own function name
+  public function refundPayment($params = array()) {
+    // TODO:
+    return FALSE;
+  }
+
 
   function isError(&$response) {
     $responseCode = $response->getResponseCode();
