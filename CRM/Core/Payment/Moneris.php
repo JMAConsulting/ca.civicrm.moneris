@@ -46,7 +46,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $this->_profile['apitoken'] = $this->_paymentProcessor['password'];
     $currencyID = $config->defaultCurrency;
     if ('CAD' != $currencyID) {
-      return self::error('Invalid configuration:' . $currencyID . ', you must use currency $CAD with Moneris');
+      return CRM_Moneris_Utils::error('Invalid configuration:' . $currencyID . ', you must use currency $CAD with Moneris');
       // Configuration error: default currency must be CAD
     }
   }
@@ -82,10 +82,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // watchdog('moneris_civicrm_ca', 'Params: <pre>!params</pre>', array('!params' => print_r($params, TRUE)), WATCHDOG_NOTICE);
     //make sure i've been called correctly ...
     if (!$this->_profile) {
-      return self::error('Unexpected error, missing profile');
+      return CRM_Moneris_Utils::error('Unexpected error, missing profile');
     }
     if ($params['currencyID'] != 'CAD') {
-      return self::error('Invalid currency selection, must be $CAD');
+      return CRM_Moneris_Utils::error('Invalid currency selection, must be $CAD');
     }
     $isRecur =  CRM_Utils_Array::value('is_recur', $params) && $params['contributionRecurID'];
     // require moneris supplied api library
@@ -147,26 +147,11 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
         'expdate'=>substr($expiry_string, 2, 4),
         'crypt_type'=>7,
       );
+
       $mpgTxn = new mpgTransaction($txnArray);
-      $mpgRequest = $this->newMpgRequest($mpgTxn);
-      $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
-      $mpgResponse = $mpgHttpPost->getMpgResponse();
-
-
-      // FIXME: add a helper function for this instead of duplicating
-      $responseCode = $mpgResponse->getResponseCode();
-      if (self::isError($mpgResponse)) {
-        if ($responseCode) {
-          return self::error($mpgResponse);
-        }
-        else {
-          return self::error('No reply from server - check your settings &/or try again');
-        }
-      }
-      /* Check for application errors */
-      $result = self::checkResult($mpgResponse);
-      if (is_a($result, 'CRM_Core_Error')) {
-        return $result;
+      $mpgResponse = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+      if (is_a($mpgResponse, 'CRM_Core_Error')) {
+        return $mpgResponse;
       }
 
       /* Success */
@@ -235,7 +220,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       ));
     }
 
-    if ($result !== TRUE) return $result;
+    if (is_a($result, 'CRM_Core_Error')) {
+      return $result;
+    }
 
     // SUCCESS
 
@@ -286,30 +273,8 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
-    $mpgRequest = $this->newMpgRequest($mpgTxn);
-    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
+    return CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
 
-    // get an mpgResponse object
-    $mpgResponse = $mpgHttpPost->getMpgResponse();
-    $responseCode = $mpgResponse->getResponseCode();
-
-    if (self::isError($mpgResponse)) {
-      if ($responseCode) {
-        return self::error($mpgResponse);
-      }
-      else {
-        return self::error('No reply from server - check your settings &/or try again');
-      }
-    }
-    /* Check for application errors */
-
-    $result = self::checkResult($mpgResponse);
-    if (is_a($result, 'CRM_Core_Error')) {
-      return $result;
-    }
-
-    /* Success */
-    return TRUE;
   }
 
   // might become a supported core function but for now just create our own function name
@@ -327,38 +292,18 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       // 'cust_id' => $params['contactID'],
     );
 
+    // Allow further manipulation of params via custom hooks
+    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray);
+
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
-
     // add customer information if any
     if (!empty($params['cust_info'])) {
       $mpgTxn->setCustInfo($params['cust_info']);
     }
 
-    $mpgRequest = $this->newMpgRequest($mpgTxn);
-    $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest);
+    return CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
 
-    // get an mpgResponse object
-    $mpgResponse = $mpgHttpPost->getMpgResponse();
-    $responseCode = $mpgResponse->getResponseCode();
-
-    if (self::isError($mpgResponse)) {
-      if ($responseCode) {
-        return self::error($mpgResponse);
-      }
-      else {
-        return self::error('No reply from server - check your settings &/or try again');
-      }
-    }
-    /* Check for application errors */
-
-    $result = self::checkResult($mpgResponse);
-    if (is_a($result, 'CRM_Core_Error')) {
-      return $result;
-    }
-
-    /* Success */
-    return TRUE;
   }
 
   // might become a supported core function but for now just create our own function name
@@ -367,67 +312,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     return FALSE;
   }
 
-
-  function isError(&$response) {
-    $responseCode = $response->getResponseCode();
-    if (is_null($responseCode)) {
-      return TRUE;
-    }
-    if ('null' == $responseCode) {
-      return TRUE;
-    }
-    if (($responseCode >= 0) && ($responseCode < 50)) {
-      return FALSE;
-    }
-    return TRUE;
-  }
-
-  // ignore for now, more elaborate error handling later.
-  function &checkResult(&$response) {
-    return $response;
-
-    $errors = $response->getErrors();
-    if (empty($errors)) {
-      return $result;
-    }
-
-    $e = CRM_Core_Error::singleton();
-    if (is_a($errors, 'ErrorType')) {
-      $e->push($errors->getErrorCode(),
-        0, NULL,
-        $errors->getShortMessage() . ' ' . $errors->getLongMessage()
-      );
-    }
-    else {
-      foreach ($errors as $error) {
-        $e->push($error->getErrorCode(),
-          0, NULL,
-          $error->getShortMessage() . ' ' . $error->getLongMessage()
-        );
-      }
-    }
-    return $e;
-  }
-
-  function &error($error = NULL) {
-    $e = CRM_Core_Error::singleton();
-    if (is_object($error)) {
-      $e->push($error->getResponseCode(),
-        0, NULL,
-        $error->getMessage()
-      );
-    }
-    elseif (is_string($error)) {
-      $e->push(9002,
-        0, NULL,
-        $error
-      );
-    }
-    else {
-      $e->push(9001, 0, NULL, "Unknown System Error.");
-    }
-    return $e;
-  }
 
   /**
    * This function checks to see if we have the right config values
@@ -452,15 +336,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     else {
       return NULL;
     }
-  }
-
-  function newMpgRequest($mpgTxn) {
-    $mpgRequest = new mpgRequest($mpgTxn);
-    $mpgRequest->setProcCountryCode("CA"); //"US" for sending transaction to US environment, we might want to support it one day
-    if ($this->_profile['server'] == 'test') {
-      $mpgRequest->setTestMode(true); //false or comment out this line for production transactions
-    }
-    return $mpgRequest;
   }
 
 }
