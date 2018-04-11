@@ -69,6 +69,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   }
 
   function doDirectPayment(&$params) {
+//print_r($params); die();
     // watchdog('moneris_civicrm_ca', 'Params: <pre>!params</pre>', array('!params' => print_r($params, TRUE)), WATCHDOG_NOTICE);
     //make sure i've been called correctly ...
     if (!$this->_profile) {
@@ -144,9 +145,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
 
       // FIXME: add a helper function for this instead of duplicating
-      $params['trxn_result_code'] = $mpgResponse->getResponseCode();
+      $responseCode = $mpgResponse->getResponseCode();
       if (self::isError($mpgResponse)) {
-        if ($params['trxn_result_code']) {
+        if ($responseCode) {
           return self::error($mpgResponse);
         }
         else {
@@ -161,6 +162,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
       /* Success */
       $dataKey = $mpgResponse->getDataKey();
+      $token_id = NULL;
 
       // FIXME: shouldn't we have contactID in every case ??
       if (!empty($params['contactID'])) {
@@ -176,6 +178,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
           'masked_account_number' => str_repeat("*", strlen($number) - 4) . substr($number, strlen($number) - 4),
           'ip_address' => $_SERVER['REMOTE_ADDR'],
         ));
+        $token_id = $result['id'];
       }
     }
 
@@ -209,14 +212,13 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       'amount' => sprintf('%01.2f', $amount),
       //'pan' => $params['credit_card_number'],
       //'expdate' => substr($expiry_string, 2, 4),
-
       'crypt_type' => '7',
       // 'cust_id' => $params['contactID'],
     );
     // deal with recurring contributions
     // my first contibution will be only a card verification
     if ($isRecur) {
-      $txnArray['type'] = 'card_verification';
+      $txnArray['type'] = 'res_card_verification_cc';
       unset($txnArray['amount']);
     }
     // Allow further manipulation of params via custom hooks
@@ -227,7 +229,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     //use the setCustInfo method of mpgTransaction object to
     //set the customer info (level 3 data) for this transaction
-    $mpgTxn->setCustInfo($mpgCustInfo);
+    //$mpgTxn->setCustInfo($mpgCustInfo);
     //create a mpgRequest object passing the transaction object
     $mpgRequest = $this->newMpgRequest($mpgTxn);
     // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
@@ -237,9 +239,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
     // watchdog('moneris_civicrm_ca', 'Response: <pre>!response</pre>', array('!response' => print_r($mpgResponse, TRUE)), WATCHDOG_NOTICE);
-    $params['trxn_result_code'] = $mpgResponse->getResponseCode();
+    $responseCode = $mpgResponse->getResponseCode();
     if (self::isError($mpgResponse)) {
-      if ($params['trxn_result_code']) {
+      if ($responseCode) {
         return self::error($mpgResponse);
       }
       else {
@@ -255,10 +257,17 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     /* Success */
 
+    $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
+
     $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
-    // todo: above assignment seems to be ignored, not getting stored in the civicrm_financial_trxn table
     $params['trxn_id'] = $mpgResponse->getTxnNumber();
     $params['gross_amount'] = $mpgResponse->getTransAmount();
+    $params['payment_status_id'] = array_search('Completed', $statuses);
+
+/*    $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
+    // todo: above assignment seems to be ignored, not getting stored in the civicrm_financial_trxn table
+    $params['trxn_id'] = $mpgResponse->getTxnNumber();
+    $params['gross_amount'] = $mpgResponse->getTransAmount();*/
     // add a recurring payment schedule if requested
     // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
     if ($isRecur && MONERIS_DO_RECURRING) {
@@ -274,7 +283,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       } while ($date['mday'] != 20);
       // next payment in moneris required format
       $startDate = date("Y/m/d", $next);
-      $numRecurs = !empty($params['installments']) ? $params['installments'] : 99;
+      /*$numRecurs = !empty($params['installments']) ? $params['installments'] : 99;
       //$startNow = 'true'; -- setting start now to false will mean the main transaction doesn't happen!
       $recurAmount = sprintf('%01.2f', $amount);
       //Create an array with the recur variables
@@ -286,8 +295,16 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
         'period' => $recurInterval,
         'recur_amount' => $recurAmount,
         'amount' => $recurAmount,
-      );
-      $mpgRecur = new mpgRecur($recurArray);
+      );*/
+
+      // ...
+      $params['payment_token_id'] = $token_id;
+      $params['start_date'] = $startDate;
+
+      // status pending because the payment will be done later
+      $params['payment_status_id'] = array_search('Pending', $statuses);
+
+      /*$mpgRecur = new mpgRecur($recurArray);
       $txnArray['type'] = 'purchase';
       // $txnArray['amount'] = $recurAmount;
       $mpgTxn = new mpgTransaction($txnArray);
@@ -308,17 +325,20 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
           return self::error('No reply from server - check your settings &/or try again');
         }
       }
-      /* Check for application errors */
+      // Check for application errors
       $result = self::checkResult($mpgResponse);
       if (is_a($result, 'CRM_Core_Error')) {
         return $result;
       }
 
-      /* Success */
+      // Success
       $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
       $params['trxn_id'] = $mpgResponse->getTxnNumber();
-      $params['gross_amount'] = $mpgResponse->getTransAmount();
+      $params['gross_amount'] = $mpgResponse->getTransAmount();*/
     }
+    else {
+    }
+
     return $params;
   }
 

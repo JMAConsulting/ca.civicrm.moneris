@@ -170,7 +170,7 @@ function _moneris_civicrm_is_moneris($payment_processor_id) {
  *
  * Handle special cases of creating contributions records (regular and recurring) when using Moneris
  *
- * 1. CiviCRM assumes all recurring contributions need to be confirmed using the IPN mechanism. 
+ * 1. CiviCRM assumes all recurring contributions need to be confirmed using the IPN mechanism.
  *    This is not true for Moneris recurring contributions, because I'm testing with a capture first.
  *    So when creating a contribution that is part of a recurring series, test for status = 2, and set to status = 1 instead.
  *    Do this for the initial and recurring contribution record.
@@ -193,9 +193,9 @@ function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
     if (_moneris_civicrm_is_moneris($payment_processor_id)) {
       switch ($objectName) {
         case 'Contribution': // cc contribution, test if it's been set to status 2 on a recurring contribution
-          if ((2 == $params['contribution_status_id']) && !empty($params['contribution_recur_id'])) {
+          /*if ((2 == $params['contribution_status_id']) && !empty($params['contribution_recur_id'])) {
             $params['contribution_status_id'] = 1;
-          }
+        }*/
           break;
         case 'ContributionRecur':
           // calculate the date of the next schedule contribution
