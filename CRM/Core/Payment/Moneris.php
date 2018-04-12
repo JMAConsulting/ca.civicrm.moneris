@@ -267,8 +267,37 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
   // might become a supported core function but for now just create our own function name
   public function refundPayment($params = array()) {
-    // TODO:
-    return FALSE;
+    // find the token for this contribution
+    try {
+      $contribution = civicrm_api3('Contribution', 'getsingle', array('id' => $params['contribution_id']));
+    }
+    catch (CiviCRM_API3_Exception $e) {
+      // FIXME: display an error message or something ?
+      return $e;
+    }
+
+    require_once 'CRM/Moneris/mpgClasses.php';
+    // try to do a refund on the token and transacti
+    $txnArray=array(
+      'type'=>'refund',
+      'txn_number'=> $contribution['trxn_id'],
+      'order_id'=> $contribution['invoice_id'],
+      // FIXME: amount should be remaining amount to make it work for partial payment / partial refund ??
+      // any way we can get it from $params ?
+      'amount' => $contribution['total_amount'],
+      'crypt_type'=> '7',
+      //'cust_id' => 'Customer ID',
+      'dynamic_descriptor' => 'Refund from CiviCRM'
+    );
+    $mpgTxn = new mpgTransaction($txnArray);
+    $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+    if (is_a($result, 'CRM_Core_Error')) {
+      return $result;
+    }
+
+    // TODO: is there something else to do ?
+
+    return TRUE;
   }
 
 

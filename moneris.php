@@ -207,3 +207,16 @@ function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
   }
 }
 
+
+function moneris_civicrm_links($op, $objectName, $objectId, &$links, &$mask, &$values) {
+  if ($objectName == 'Contribution' && $op == 'contribution.selector.row') {
+    $links[] = array(
+      'name' => ts('Refund'),
+      'url' => 'civicrm/moneris/refund',
+      'qs' => 'reset=1&id=%%contribId%%&cid=%%cid%%',
+      'title' => 'Refund',
+      //'class' => 'no-popup',
+    );
+    $values['contribId'] = $objectId;
+  }
+}
