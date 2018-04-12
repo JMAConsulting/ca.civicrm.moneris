@@ -155,7 +155,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       }
 
       /* Success */
-      $dataKey = $mpgResponse->getDataKey();
+      $token = $mpgResponse->getDataKey();
       $token_id = NULL;
 
       // FIXME: shouldn't we have contactID in every case ??
@@ -164,7 +164,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
         $result = civicrm_api3('PaymentToken', 'create', array(
           'contact_id' => $params['contactID'],
           'email' => $email,
-          'token' => $dataKey,
+          'token' => $token,
           'payment_processor_id' => $this->_paymentProcessor['id'],
           'expiry_date' => $params['year'] . '-' . $params['month'],
           'billing_first_name' => $params['billing_first_name'],
@@ -197,7 +197,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     );
     $mpgCustInfo->setBilling($billing);
     // set orderid as invoiceID to help match things up with Moneris later
-    $my_orderid = $params['invoiceID'];
+    $orderid = $params['invoiceID'];
     $amount = CRM_Utils_Rule::cleanMoney($params['amount']);
 
 
@@ -207,17 +207,13 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($isRecur) {
       // only check the credit card
       // payment will be done later by a cron task (could be done in a future day)
-      $result = self::cardVerification(array(
-        'data_key' => $dataKey,
-        'order_id' => $my_orderid
-      ));
+      $result = CRM_Moneris_Utils::cardVerification($token, $orderid);
     } else {
-      $result = self::processTokenPayment(array(
-        'data_key' => $dataKey,
-        'order_id' => $my_orderid,
-        'amount' => sprintf('%01.2f', $amount),
-        'cust_info' => $mpgCustInfo,
-      ));
+      $amount = sprintf('%01.2f', $amount);
+      $extraParams = array(
+        'cust_info' =>  $mpgCustInfo
+      );
+      $result = CRM_Moneris_Utils::processTokenPayment($token, $orderid, $amount, $extraParams);
     }
 
     if (is_a($result, 'CRM_Core_Error')) {
@@ -259,52 +255,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     return FALSE;
   }
 
-  public function cardVerification($params = array()) {
-    require_once 'CRM/Moneris/mpgClasses.php';
-
-    $txnArray = array(
-      'type' => 'res_card_verification_cc',
-      'data_key' => $params['data_key'],
-      'order_id' => $params['order_id'],
-      'crypt_type' => '7',
-    );
-    // Allow further manipulation of params via custom hooks
-    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray);
-
-    //create a transaction object passing the hash created above
-    $mpgTxn = new mpgTransaction($txnArray);
-    return CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
-
-  }
-
-  // might become a supported core function but for now just create our own function name
-  public function processTokenPayment($params = array()) {
-    require_once 'CRM/Moneris/mpgClasses.php';
-
-    $txnArray = array(
-      'type' => 'res_purchase_cc',
-      'data_key' => $dataKey,
-      'order_id' => $my_orderid,
-      'amount' => sprintf('%01.2f', $amount),
-      //'pan' => $params['credit_card_number'],
-      //'expdate' => substr($expiry_string, 2, 4),
-      'crypt_type' => '7',
-      // 'cust_id' => $params['contactID'],
-    );
-
-    // Allow further manipulation of params via custom hooks
-    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray);
-
-    //create a transaction object passing the hash created above
-    $mpgTxn = new mpgTransaction($txnArray);
-    // add customer information if any
-    if (!empty($params['cust_info'])) {
-      $mpgTxn->setCustInfo($params['cust_info']);
-    }
-
-    return CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
-
-  }
 
   // might become a supported core function but for now just create our own function name
   public function refundPayment($params = array()) {

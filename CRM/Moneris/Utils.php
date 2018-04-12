@@ -2,6 +2,69 @@
 
 class CRM_Moneris_Utils {
 
+  /**
+   * Verify the credit card associated with the $token
+   * Useful when we just want to ensure the card is good but don't want to process the payment right away
+   *
+   * @param  string $token   data_key required by Moneris
+   * @param  string $orderid internal order id for future reference
+   * @return mpgResponse          If any error, return a CRM_Core_Error
+   */
+  public function cardVerification($token, $orderid) {
+    require_once 'CRM/Moneris/mpgClasses.php';
+
+    $txnArray = array(
+      'type' => 'res_card_verification_cc',
+      'data_key' => $token,
+      'order_id' => $orderid,
+      'crypt_type' => '7',
+    );
+
+    //create a transaction object passing the hash created above
+    $mpgTxn = new mpgTransaction($txnArray);
+    return self::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+
+  }
+
+  /**
+   * Do a one time Moneris vault payment using the token given
+   *
+   * @param  string $token   data_key required by Moneris
+   * @param  string $orderid internal order id for future reference
+   * @param  float $amount  amount to be charged
+   * @param  array $params  extra details, e.g. cust_info (mpgCustInfo object)
+   * @return mpgResponse          If any error, return a CRM_Core_Error
+   */
+  public function processTokenPayment($token, $orderid, $amount, $params) {
+    require_once 'CRM/Moneris/mpgClasses.php';
+
+    $txnArray = array(
+      'type' => 'res_purchase_cc',
+      'data_key' => $token,
+      'order_id' => $orderid,
+      'amount' => $amount,
+      'crypt_type' => '7',
+      // 'cust_id' => $params['contactID'],
+    );
+
+        //create a transaction object passing the hash created above
+    $mpgTxn = new mpgTransaction($txnArray);
+    // add customer information if any
+    if (!empty($params['cust_info'])) {
+      $mpgTxn->setCustInfo($params['cust_info']);
+    }
+
+    return self::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+
+  }
+
+  /**
+   * Internal helper that creates a mpgRequest based on the given mpgTransaction in test/prod mode
+   *
+   * @param  mpgTransaction $mpgTxn transaction that will be used for the request
+   * @param  string $mode   'test' (default) or 'prod'
+   * @return mpgRequest         return the initialized mpgRequest
+   */
   static function mpgRequest($mpgTxn, $mode = 'test') {
     $mpgRequest = new mpgRequest($mpgTxn);
     $mpgRequest->setProcCountryCode("CA"); //"US" for sending transaction to US environment, we might want to support it one day
@@ -13,9 +76,6 @@ class CRM_Moneris_Utils {
 
   static function mpgHttpsPost($storeid, $apitoken, $mpgTxn) {
     require_once 'CRM/Moneris/mpgClasses.php';
-
-    //create a transaction object passing the hash created above
-    $mpgTxn = new mpgTransaction($txnArray);
 
     $mpgRequest = self::mpgRequest($mpgTxn);
     $mpgHttpPost = new mpgHttpsPost($storeid, $apitoken, $mpgRequest);
@@ -32,15 +92,15 @@ class CRM_Moneris_Utils {
         return self::error('No reply from server - check your settings &/or try again');
       }
     }
-    /* Check for application errors */
 
+    /* Check for application errors */
     $result = self::checkResult($mpgResponse);
     if (is_a($result, 'CRM_Core_Error')) {
       return $result;
     }
 
     /* Success */
-    return TRUE;
+    return $mpgResponse;
   }
 
 
