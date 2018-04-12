@@ -281,7 +281,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     }
     catch (CiviCRM_API3_Exception $e) {
       // FIXME: display an error message or something ?
-      throw new \Civi\Payment\Exception\PaymentProcessorException(e->getMessage());
+      throw new \Civi\Payment\Exception\PaymentProcessorException($e->getMessage());
     }
 
     require_once 'CRM/Moneris/mpgClasses.php';

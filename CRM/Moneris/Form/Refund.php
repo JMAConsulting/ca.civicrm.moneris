@@ -79,7 +79,7 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
     // Success
 
     // do the refund in CiviCRM
-    civicrm_api3('Payment', 'cancel', array('id' => $this->_id))
+    civicrm_api3('Payment', 'cancel', array('id' => $this->_id));
 
     // redirect to contact contribution tab
     CRM_Core_Session::singleton()->replaceUserContext($url);
