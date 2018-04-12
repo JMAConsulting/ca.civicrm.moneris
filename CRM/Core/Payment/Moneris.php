@@ -205,6 +205,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // ensure that the credit card is good or process the payment
 
     if ($isRecur) {
+      // associate token_id to recurring contribution
+      if ($token_id && !empty($params['contributionRecurID'])) {
+        $result = civicrm_api3('ContributionRecur', 'create', array(
+          'id' => $params['contributionRecurID'],
+          'token_id' => $token_id,
+        ));
+      }
+
       // only check the credit card
       // payment will be done later by a cron task (could be done in a future day)
       $result = CRM_Moneris_Utils::cardVerification($token, $orderid);
