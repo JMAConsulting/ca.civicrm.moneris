@@ -215,13 +215,13 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
       // only check the credit card
       // payment will be done later by a cron task (could be done in a future day)
-      $result = CRM_Moneris_Utils::cardVerification($token, $orderid);
+      $result = CRM_Moneris_Utils::cardVerification($this, $token, $orderid);
     } else {
       $amount = sprintf('%01.2f', $amount);
       $extraParams = array(
         'cust_info' =>  $mpgCustInfo
       );
-      $result = CRM_Moneris_Utils::processTokenPayment($token, $orderid, $amount, $extraParams);
+      $result = CRM_Moneris_Utils::processTokenPayment($this, $token, $orderid, $amount, $extraParams);
     }
 
     if (is_a($result, 'CRM_Core_Error')) {

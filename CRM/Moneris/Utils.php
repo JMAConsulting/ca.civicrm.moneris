@@ -10,7 +10,7 @@ class CRM_Moneris_Utils {
    * @param  string $orderid internal order id for future reference
    * @return mpgResponse          If any error, return a CRM_Core_Error
    */
-  public function cardVerification($token, $orderid) {
+  public function cardVerification($processor, $token, $orderid) {
     require_once 'CRM/Moneris/mpgClasses.php';
 
     $txnArray = array(
@@ -22,7 +22,7 @@ class CRM_Moneris_Utils {
 
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
-    return self::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn);
 
   }
 
@@ -35,7 +35,7 @@ class CRM_Moneris_Utils {
    * @param  array $params  extra details, e.g. cust_info (mpgCustInfo object)
    * @return mpgResponse          If any error, return a CRM_Core_Error
    */
-  public function processTokenPayment($token, $orderid, $amount, $params) {
+  public function processTokenPayment($processor, $token, $orderid, $amount, $params) {
     require_once 'CRM/Moneris/mpgClasses.php';
 
     $txnArray = array(
@@ -54,7 +54,7 @@ class CRM_Moneris_Utils {
       $mpgTxn->setCustInfo($params['cust_info']);
     }
 
-    return self::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn);
 
   }
 
@@ -74,7 +74,7 @@ class CRM_Moneris_Utils {
     return $mpgRequest;
   }
 
-  static function mpgHttpsPost($storeid, $apitoken, $mpgTxn) {
+  static function mpgHttpsRequestPost($storeid, $apitoken, $mpgTxn) {
     require_once 'CRM/Moneris/mpgClasses.php';
 
     $mpgRequest = self::mpgRequest($mpgTxn);
