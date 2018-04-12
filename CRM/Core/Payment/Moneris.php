@@ -123,8 +123,11 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // format credit card expiry date
     $expiry_string = sprintf('%04d%02d', $params['year'], $params['month']);
 
-    // TODO : is there already a token for this contact ?
+    // FIXME : is there already a token for this contact
+    // is it better to disable previous token and create new one, update credit card on the existing token or just create a new one (option ?)
+    // for now, create a new token each time
     $token = False;
+    $token_id = NULL;
     /*if (!empty($params['contactID'])) {
       $result = civicrm_api3('PaymentToken', 'get', array(
         'sequential' => 1,
@@ -133,9 +136,8 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       //...
     }*/
 
-    if ($token) {
-    }
-    else {
+    if (!$token) {
+
       // create a new vault credit card and get a corresponding token
       $txnArray=array(
         'type'=>'res_add_cc',
@@ -156,7 +158,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
       /* Success */
       $token = $mpgResponse->getDataKey();
-      $token_id = NULL;
 
       // FIXME: shouldn't we have contactID in every case ??
       if (!empty($params['contactID'])) {
@@ -206,10 +207,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     if ($isRecur) {
       // associate token_id to recurring contribution
-      if ($token_id && !empty($params['contributionRecurID'])) {
+      if (!empty($token_id) && !empty($params['contributionRecurID'])) {
         $result = civicrm_api3('ContributionRecur', 'create', array(
           'id' => $params['contributionRecurID'],
-          'token_id' => $token_id,
+          'payment_token_id' => $token_id,
         ));
       }
 
