@@ -266,6 +266,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
 
   // might become a supported core function but for now just create our own function name
+  /**
+   * refundPayment --
+   *
+   * @param  array  $params [description]
+   * @return [type]         [description]
+   *
+   * @throws \Civi\Payment\Exception\PaymentProcessorException
+   */
   public function refundPayment($params = array()) {
     // find the token for this contribution
     try {
@@ -273,7 +281,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     }
     catch (CiviCRM_API3_Exception $e) {
       // FIXME: display an error message or something ?
-      return $e;
+      throw new \Civi\Payment\Exception\PaymentProcessorException(e->getMessage());
     }
 
     require_once 'CRM/Moneris/mpgClasses.php';
@@ -292,7 +300,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $mpgTxn = new mpgTransaction($txnArray);
     $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
     if (is_a($result, 'CRM_Core_Error')) {
-      return $result;
+      throw new \Civi\Payment\Exception\PaymentProcessorException(CRM_Core_Error::getMessages($result));
     }
 
     // TODO: is there something else to do ?

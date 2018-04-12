@@ -64,10 +64,25 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
 
     // FIXME: doesn't work for multiple Moneris Processors
     $payment = Civi\Payment\System::singleton()->getByName('Moneris', $this->_isTest);
-    $payment->refundPayment(array('contribution_id' => $this->_id));
-    CRM_Core_Session::singleton()->replaceUserContext(CRM_Utils_System::url('civicrm/contact/view',
-      "reset=1&cid={$this->_contactID}&selectedChild=contribute"
-    ));
+
+    $urlParams = "reset=1&cid={$this->_contactID}&selectedChild=contribute";
+    $url = CRM_Utils_System::url('civicrm/contact/view', $urlParams);
+
+    // process the refund
+    try {
+      $payment->refundPayment(array('contribution_id' => $this->_id));
+    }
+    catch (\Civi\Payment\Exception\PaymentProcessorException $e) {
+      CRM_Core_Error::statusBounce($e->getMessage(), $url, ts('Payment Processor Error'));
+    }
+
+    // Success
+
+    // do the refund in CiviCRM
+    civicrm_api3('Payment', 'cancel', array('id' => $this->_id))
+
+    // redirect to contact contribution tab
+    CRM_Core_Session::singleton()->replaceUserContext($url);
     return;
   }
 
