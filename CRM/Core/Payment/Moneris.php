@@ -126,8 +126,8 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // FIXME : is there already a token for this contact
     // is it better to disable previous token and create new one, update credit card on the existing token or just create a new one (option ?)
     // for now, create a new token each time
-    $token = False;
-    $token_id = NULL;
+    $token = FALSE;
+    $token_id = CRM_Utils_Array('payment_token_id', $params, NULL);
     /*if (!empty($params['contactID'])) {
       $result = civicrm_api3('PaymentToken', 'get', array(
         'sequential' => 1,
@@ -135,6 +135,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       ));
       //...
     }*/
+    // get token_id based on token
+    if (!empty($token_id)) {
+      $token = civicrm_api3('PaymentToken', 'getvalue', array('id' => $token_id, 'return' => 'token'));
+    }
 
     if (!$token) {
 
