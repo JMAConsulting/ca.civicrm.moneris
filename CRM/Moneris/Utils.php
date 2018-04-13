@@ -35,7 +35,7 @@ class CRM_Moneris_Utils {
    * @param  array $params  extra details, e.g. cust_info (mpgCustInfo object)
    * @return mpgResponse          If any error, return a CRM_Core_Error
    */
-  public function processTokenPayment($processor, $token, $orderid, $amount, $params) {
+  public function processTokenPayment($processor, $token, $orderid, $amount, $params = array()) {
     require_once 'CRM/Moneris/mpgClasses.php';
 
     $txnArray = array(

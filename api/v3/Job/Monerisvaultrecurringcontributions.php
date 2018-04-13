@@ -36,14 +36,15 @@ function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
 SELECT
   cr.id as recur_id, cr.contact_id, cr.payment_token_id,
   c.id as original_contribution_id, c.contribution_status_id,
-  c.total_amount, c.currency, c.invoice_id
+  c.total_amount, c.currency, c.invoice_id,
+  pp.token
 FROM
   civicrm_contribution_recur cr
   INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
   INNER JOIN civicrm_payment_token pt ON cr.payment_token_id = pt.id
   INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
 WHERE
-  pp.name = 'Moneris'
+  pp.name = 'Moneris' AND pp.payment_token_id IS NOT NULL
   AND cr.contribution_status_id IN (2,5)";
   // in case the job was called to execute a specific recurring contribution id -- not yet implemented!
   if (!empty($params['recur_id'])) {
@@ -87,7 +88,7 @@ WHERE
       'amount' => $dao->total_amount,
       'currencyID' => $dao->currency,
       'invoiceID' => $invoice_id,
-      'payment_token_id' => $dao->token_id,
+      'payment_token_id' => $dao->payment_token_id,
       'street_address' => '',
       'city' => '',
       'state_province' => '',
@@ -97,7 +98,13 @@ WHERE
     // create or retrieve the contribution
     $contribution_id = NULL;
     if ($dao->contribution_status_id == 1) {
-      // The original contribution was already completed
+      // The original contribution was already completed - do a duplicate
+      // TODO: before saving the duplicate, add a call to a hook to allow for price adjustment (e.g. taxes)
+      // Invoke XXX
+
+      // ensure the money is clean before processing
+      $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($payment_params['amount']);
+
       $result = civicrm_api3('Contribution', 'repeattransaction', [
         'contribution_recur_id' => $dao->recur_id,
         'original_contribution_id' => $dao->original_contribution_id,
@@ -126,14 +133,9 @@ WHERE
       // update the current contribution
       $payment_params['id'] = $contribution_id;
 
-      // TODO: before processing the payment, add a call to a hook to allow for
-      // price adjustment (e.g. taxes)
-      // Invoke XXX
-
       // processing the payment
-      $params = array();
       try {
-        $paymentProcessor['object']->doPayment($payment_params);
+        CRM_Moneris_Utils::processTokenPayment($paymentProcessor, $dao->token, $invoice_id, $payment_params['amount']);
       }
       catch (PaymentProcessorException $e) {
         Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
@@ -146,6 +148,8 @@ WHERE
         'contribution_status_id' => $payment_params['payment_status_id'],
         'trxn_id' => $payment_params['payment_status_id'],
       ]);
+
+      // TODO: update recurring payment status to In Progress ?
     }
 
   }
