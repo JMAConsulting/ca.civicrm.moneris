@@ -46,7 +46,7 @@ FROM
 WHERE
   pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
   AND cr.contribution_status_id IN (2,5)
-  AND c.status_id IN (1,2)";
+  AND c.contribution_status_id IN (1,2)";
   // in case the job was called to execute a specific recurring contribution id -- not yet implemented!
   if (!empty($params['recur_id'])) {
     $sql .= ' AND cr.id = %1';
