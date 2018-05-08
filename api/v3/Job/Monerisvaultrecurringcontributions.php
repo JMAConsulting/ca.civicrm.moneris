@@ -24,6 +24,8 @@ function _civicrm_api3_job_Monerisvaultrecurringcontributions_spec(&$spec) {
  */
 function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
 
+  Civi::log()->debug(__FUNCTION__);
+
   // Running this job in parallell could generate bad duplicate contributions.
   $lock = new CRM_Core_Lock('civicrm.job.monerisvaultrecurringcontributions');
   if (!$lock->acquire()) {
@@ -37,14 +39,14 @@ SELECT
   cr.id as recur_id, cr.contact_id, cr.payment_token_id,
   c.id as original_contribution_id, c.contribution_status_id,
   c.total_amount, c.currency, c.invoice_id,
-  pp.token
+  pt.token
 FROM
   civicrm_contribution_recur cr
   INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
   INNER JOIN civicrm_payment_token pt ON cr.payment_token_id = pt.id
   INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
 WHERE
-  pp.name = 'Moneris' AND pp.payment_token_id IS NOT NULL
+  pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
   AND cr.contribution_status_id IN (2,5)";
   // in case the job was called to execute a specific recurring contribution id -- not yet implemented!
   if (!empty($params['recur_id'])) {
@@ -98,21 +100,21 @@ WHERE
     // create or retrieve the contribution
     $contribution_id = NULL;
     if ($dao->contribution_status_id == 1) {
-      // The original contribution was already completed - do a duplicate
-      // TODO: before saving the duplicate, add a call to a hook to allow for price adjustment (e.g. taxes)
-      // Invoke XXX
 
       // ensure the money is clean before processing
       $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($payment_params['amount']);
 
-      $result = civicrm_api3('Contribution', 'repeattransaction', [
+      // as it is a vault payment, we are able to update amount, we should allow hook to do so
+      // (e.g. taxes or  membership tarfication updates
+      // so we use our own custom api based on core repeattransaction
+      $result = civicrm_api3('Moneris', 'repeattransaction', [
         'contribution_recur_id' => $dao->recur_id,
         'original_contribution_id' => $dao->original_contribution_id,
-        'contribution_status_id' => $payment_status_id,
         'invoice_id' => $invoice_id,
         'contribution_status_id' => 2,  // Pending
-        'trxn_result_code' => $payment_params['trxn_result_code'],
-        'trxn_id' => $payment_params['trxn_id'],
+        'receive_date' => date('YmdHis'),
+        //'trxn_result_code' => $payment_params['trxn_result_code'],
+        //'trxn_id' => $payment_params['trxn_id'],
       ]);
       // Presumably there is a good reason why CiviCRM is not storing
       // our new invoice_id. Anyone know?

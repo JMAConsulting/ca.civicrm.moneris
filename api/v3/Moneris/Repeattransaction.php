@@ -1,4 +1,7 @@
 <?php
+
+require_once('api/v3/Contribution.php');
+
 use CRM_Moneris_ExtensionUtil as E;
 
 /**
@@ -14,6 +17,9 @@ function _civicrm_api3_moneris_Repeattransaction_spec(&$spec) {
 
 /**
  * Moneris.Repeattransaction API
+ * Warning: we really should have this in core otherwise, we need to update this
+ * copy of Contribution.RepeatTransaction api with a call to hook to allow amount updates
+ * could be added to to Core with a proper supportsToken() and only if a token is defined ?
  *
  * @param array $params
  * @return array API result descriptor
@@ -53,6 +59,11 @@ function civicrm_api3_moneris_Repeattransaction($params) {
     unset($contribution->id, $contribution->receive_date, $contribution->invoice_id);
     $contribution->receive_date = $params['receive_date'];
 
+    // Specific for Moneris Vault
+    // TODO: add condition
+    CRM_Moneris_Utils_HookInvoker::singleton()->monerisRecurringPre($params, $contribution);
+    // End Specifics
+
     $passThroughParams = array(
       'trxn_id',
       'total_amount',
@@ -63,7 +74,7 @@ function civicrm_api3_moneris_Repeattransaction($params) {
     );
     $input = array_intersect_key($params, array_fill_keys($passThroughParams, NULL));
 
-    return _ipn_process_transaction($params, $contribution, $input, $ids, $original_contribution);
+    //return _ipn_process_transaction($params, $contribution, $input, $ids, $original_contribution);
   }
   catch(Exception $e) {
     throw new API_Exception('failed to load related objects' . $e->getMessage() . "\n" . $e->getTraceAsString());
