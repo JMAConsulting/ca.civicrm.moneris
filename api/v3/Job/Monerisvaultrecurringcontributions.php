@@ -107,7 +107,7 @@ WHERE
       // as it is a vault payment, we are able to update amount, we should allow hook to do so
       // (e.g. taxes or  membership tarfication updates
       // so we use our own custom api based on core repeattransaction
-      $result = civicrm_api3('Moneris', 'repeattransaction', [
+      $result = civicrm_api3('Contribution', 'repeattransaction', [
         'contribution_recur_id' => $dao->recur_id,
         'original_contribution_id' => $dao->original_contribution_id,
         'invoice_id' => $invoice_id,

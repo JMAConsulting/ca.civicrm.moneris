@@ -221,6 +221,3 @@ function moneris_civicrm_links($op, $objectName, $objectId, &$links, &$mask, &$v
   }
 }
 
-function moneris_civicrm_monerisRecurringPre(&$params, &$contribution) {
-  Civi::log()->debug('monerisRecurringPre : ' . print_r($params,1) . "\n" . print_r($contribution,1));
-}
