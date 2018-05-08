@@ -8,7 +8,7 @@ return array (
   array (
     'name' => 'Cron:Job.Monerisvaultrecurringcontributions',
     'entity' => 'Job',
-    'params' => 
+    'params' =>
     array (
       'version' => 3,
       'name' => 'Moneris Recurring Contributions Daily Auto-Generate using Vault',
@@ -17,6 +17,7 @@ return array (
       'api_entity' => 'Job',
       'api_action' => 'Monerisvaultrecurringcontributions',
       'parameters' => '',
+      'is_active' => 0,
     ),
   ),
 );
