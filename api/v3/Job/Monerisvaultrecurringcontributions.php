@@ -45,7 +45,8 @@ FROM
   INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
 WHERE
   pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
-  AND cr.contribution_status_id IN (2,5)";
+  AND cr.contribution_status_id IN (2,5)
+  AND c.status_id IN (1,2)";
   // in case the job was called to execute a specific recurring contribution id -- not yet implemented!
   if (!empty($params['recur_id'])) {
     $sql .= ' AND cr.id = %1';
@@ -60,6 +61,8 @@ WHERE
     $sql .= ' AND (cr.next_sched_contribution_date <= CURDATE()
                 OR (cr.next_sched_contribution_date IS NULL AND cr.start_date <= CURDATE()))';
   }
+  // FIXME: ensure that we have only one of each recurring contribution ?
+  //$sql .= 'GROUP BY c.contribution_recur_id';
 
   //$crypt = new CRM_Cardvault_Encrypt();
   $paymentProcessor = CRM_Financial_BAO_PaymentProcessor::getPayment($params['payment_processor_id'], $params['payment_processor_mode']);
@@ -199,6 +202,14 @@ function _repeat_transaction_with_updates($params) {
   }
   $contribution->save();
 
+  // from CRM_Cdntaxcalculator_BAO_CDNTaxes::checkTaxAmount (could we use a function from there instead)
+  $taxes = CRM_Cdntaxcalculator_BAO_CDNTaxes::getTaxRatesForContact($contribution->contact_id);
+  $taxRates = CRM_Core_PseudoConstant::getTaxRates();
+  foreach ($taxRates as $ft => &$values) {
+    $taxRates[$ft] = $taxes['TAX_TOTAL'];
+  }
+  $tax_rate = $taxRates[$contribution->financial_type_id] / 100;
+
   // now that we have a contribution, let's update it
   $lineitem_result = civicrm_api3('LineItem', 'get', [
     'sequential' => 1,
@@ -233,8 +244,7 @@ function _repeat_transaction_with_updates($params) {
       ]);
       $p['unit_price'] = $pfv['amount'];
       $p['line_total'] = $pfv['amount'] * $p['qty'];
-      $taxes = CRM_Cdntaxcalculator_BAO_CDNTaxes::getTaxesForContact($dao->contact_id);
-      $p['tax_amount'] = round($p['line_total'] * ($taxes['HST_GST']/100), 2);
+      $p['tax_amount'] = round($p['line_total'] * $tax_rate, 2);
       $p['line_total'] += $p['tax_amount'];
     }
     elseif (!$original_line_item['line_total']) {
@@ -258,7 +268,7 @@ function _repeat_transaction_with_updates($params) {
   $contribution->save();
 
   // Fetch all memberships for this contribution and associate the (future) contribution
-  // FIXME: not sure about this one
+  // FIXME: not sure about this one - at least ensure it works for non membership contribution
   /*$sql2 = 'SELECT m.contact_id, m.id as membership_id
       FROM civicrm_membership m
       LEFT JOIN civicrm_membership_payment mp ON (mp.membership_id = m.id)
