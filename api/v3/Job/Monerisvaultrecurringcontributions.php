@@ -132,7 +132,7 @@ WHERE
         }
 
         // duplicate contribution and update amounts
-        $result = _repeat_transaction_with_updates($repeat_params);
+        $result = _repeat_transaction_with_updates($repeat_params, $params['payment_processor_id']);
         $contribution_id = $result['id'];
         $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($result['total_amount']);
 
@@ -173,7 +173,7 @@ WHERE
 
 }
 
-function _repeat_transaction_with_updates($params) {
+function _repeat_transaction_with_updates($params, $payment_processor_id) {
   if (empty($params['original_contribution_id'])) {
     throw new CRM_Core_Exception(ts('No original contribution to duplicate'));
   }
@@ -187,6 +187,11 @@ function _repeat_transaction_with_updates($params) {
 
   $original_contribution = clone $contribution;
   $ids = $input = [];
+
+  // we need to add payment processor if we want the test mode to work
+  // small bug in loadRelatedObjects / getPayment which is not clever enough to take
+  // the test payment processor if contribution is a test
+  $input['payment_processor_id'] = $payment_processor_id;
 
   $contribution->loadRelatedObjects($input, $ids, TRUE);
 
