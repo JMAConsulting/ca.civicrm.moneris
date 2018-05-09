@@ -22,7 +22,7 @@ class CRM_Moneris_Utils {
 
     //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
-    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn);
+    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn, $processor->_profile['server']);
 
   }
 
@@ -54,7 +54,7 @@ class CRM_Moneris_Utils {
       $mpgTxn->setCustInfo($params['cust_info']);
     }
 
-    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn);
+    return self::mpgHttpsRequestPost($processor->_profile['storeid'], $processor->_profile['apitoken'], $mpgTxn, $processor->_profile['server']);
 
   }
 
@@ -65,7 +65,7 @@ class CRM_Moneris_Utils {
    * @param  string $mode   'test' (default) or 'prod'
    * @return mpgRequest         return the initialized mpgRequest
    */
-  static function mpgRequest($mpgTxn, $mode = 'test') {
+  static function mpgRequest($mpgTxn, $mode) {
     $mpgRequest = new mpgRequest($mpgTxn);
     $mpgRequest->setProcCountryCode("CA"); //"US" for sending transaction to US environment, we might want to support it one day
     if ($mode == 'test') {
@@ -74,10 +74,10 @@ class CRM_Moneris_Utils {
     return $mpgRequest;
   }
 
-  static function mpgHttpsRequestPost($storeid, $apitoken, $mpgTxn) {
+  static function mpgHttpsRequestPost($storeid, $apitoken, $mpgTxn, $mode) {
     require_once 'CRM/Moneris/mpgClasses.php';
 
-    $mpgRequest = self::mpgRequest($mpgTxn);
+    $mpgRequest = self::mpgRequest($mpgTxn, $mode);
     $mpgHttpPost = new mpgHttpsPost($storeid, $apitoken, $mpgRequest);
 
     // get an mpgResponse object

@@ -155,7 +155,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       );
 
       $mpgTxn = new mpgTransaction($txnArray);
-      $mpgResponse = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+      $mpgResponse = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn, $this->_profile['server']);
       if (is_a($mpgResponse, 'CRM_Core_Error')) {
         return $mpgResponse;
       }
@@ -302,7 +302,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       'dynamic_descriptor' => 'Refund from CiviCRM'
     );
     $mpgTxn = new mpgTransaction($txnArray);
-    $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn);
+    $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn, $this->_profile['server']);
     if (is_a($result, 'CRM_Core_Error')) {
       throw new \Civi\Payment\Exception\PaymentProcessorException(CRM_Core_Error::getMessages($result));
     }
