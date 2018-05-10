@@ -163,7 +163,7 @@ WHERE
       }
 
       if (is_a($result, 'CRM_Core_Error')) {
-        Civi::log()->error('Moneris: failed payment: ' . $result->getMessages());
+        Civi::log()->error('Moneris: failed payment: ' . CRM_Core_Error::getMessages($result));
         $success = FALSE;
       }
 
