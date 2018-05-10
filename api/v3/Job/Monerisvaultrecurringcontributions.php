@@ -155,10 +155,10 @@ WHERE
       // processing the payment
       $success = TRUE;
       try {
-        $mpgResponse = CRM_Moneris_Utils::processTokenPayment($paymentProcessorObj, $payment_params['token'], $payment_params['invoiceID'], $payment_params['amount']);
+        $result = CRM_Moneris_Utils::processTokenPayment($paymentProcessorObj, $payment_params['token'], $payment_params['invoiceID'], $payment_params['amount']);
       }
       catch (PaymentProcessorException $e) {
-        Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
+        $result = $e;
         $success = FALSE;
       }
 
@@ -171,6 +171,7 @@ WHERE
       // whatever is wrong, we must update the status to failed
       if (is_a($result, 'CRM_Core_Error') || !$success) {
         $update_params['payment_status_id'] = 4;  // Failed
+        Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
       }
       else {
         $update_params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();

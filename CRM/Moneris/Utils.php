@@ -138,31 +138,14 @@ class CRM_Moneris_Utils {
     return $e;
   }
 
-  // ignore for now, more elaborate error handling later.
   static function &checkResult(&$response) {
+    if (!$response->getComplete())) {
+      $e = CRM_Core_Error::singleton();
+      $e->push(9999, 0, NULL, $response->getMessage());
+      return $e;
+    }
+
     return $response;
-
-    $errors = $response->getErrors();
-    if (empty($errors)) {
-      return $result;
-    }
-
-    $e = CRM_Core_Error::singleton();
-    if (is_a($errors, 'ErrorType')) {
-      $e->push($errors->getErrorCode(),
-        0, NULL,
-        $errors->getShortMessage() . ' ' . $errors->getLongMessage()
-      );
-    }
-    else {
-      foreach ($errors as $error) {
-        $e->push($error->getErrorCode(),
-          0, NULL,
-          $error->getShortMessage() . ' ' . $error->getLongMessage()
-        );
-      }
-    }
-    return $e;
   }
 
 }
