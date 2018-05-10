@@ -32,6 +32,9 @@ function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
   $sqlparams = [];
 
   // contribution_status_id: 2=Pending, 5=InProgress
+  // we take only the latest one for each contribution_recur_id (see https://stackoverflow.com/a/123481/2708428)
+  // FIXME: a recurring payment with only one failed payment won't work
+  // (can only happen if the card verification has worked but the payment a few days later didn't)
   $sql = "
 SELECT
   cr.id as recur_id, cr.contact_id, cr.payment_token_id,
@@ -43,28 +46,21 @@ FROM
   INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
   INNER JOIN civicrm_payment_token pt ON cr.payment_token_id = pt.id
   INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
+  LEFT JOIN civicrm_contribution c2 ON (c.contribution_recur_id = c2.contribution_recur_id AND c.id < c2.id)
 WHERE
   pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
   AND cr.contribution_status_id IN (2,5)
-  AND c.contribution_status_id IN (1,2)";
-  // in case the job was called to execute a specific recurring contribution id -- not yet implemented!
-  if (!empty($params['recur_id'])) {
-    $sql .= ' AND cr.id = %1';
-    $sqlparams[1] = [$params['recur_id'], 'Positive'];
-  }
-  else {
-    // normally, process all recurring contributions due today or earlier.
-    // FIXME: normally we should use '=', unless catching up.
-    // If catching up, we need to manually update the next_sched_contribution_date
-    // because CRM_Contribute_BAO_ContributionRecur::updateOnNewPayment() only updates
-    // if the receive_date = next_sched_contribution_date.
-    $sql .= ' AND (DATE(cr.next_sched_contribution_date) <= CURDATE()
-                OR (cr.next_sched_contribution_date IS NULL AND DATE(cr.start_date) <= CURDATE()))';
-  }
-  // FIXME: ensure that we have only one of each recurring contribution ?
-  //$sql .= 'GROUP BY c.contribution_recur_id';
+  AND c.contribution_status_id IN (1,2)
+  AND c2.id IS NULL";
 
-  //$crypt = new CRM_Cardvault_Encrypt();
+  // normally, process all recurring contributions due today or earlier.
+  // FIXME: normally we should use '=', unless catching up.
+  // If catching up, we need to manually update the next_sched_contribution_date
+  // because CRM_Contribute_BAO_ContributionRecur::updateOnNewPayment() only updates
+  // if the receive_date = next_sched_contribution_date.
+  $sql .= ' AND (DATE(cr.next_sched_contribution_date) <= CURDATE()
+                 OR (cr.next_sched_contribution_date IS NULL AND DATE(cr.start_date) <= CURDATE()))';
+
   $paymentProcessor = CRM_Financial_BAO_PaymentProcessor::getPayment($params['payment_processor_id'], $params['payment_processor_mode']);
   $counter = 0;
   $error_count = 0;
@@ -101,7 +97,14 @@ WHERE
 
     // create or retrieve the contribution
     $contribution_id = NULL;
-    if ($dao->contribution_status_id == 1) {
+
+    // Pending
+    if ($dao->contribution_status_id == 2) {
+      // previously created but not processed (first one)
+      $contribution_id = $dao->original_contribution_id;
+    }
+    // Completed, create a new contribution
+    elseif ($dao->contribution_status_id == 1) {
 
       // ensure the money is clean before processing
       $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($payment_params['amount']);
@@ -140,10 +143,7 @@ WHERE
 
       }
     }
-    elseif ($dao->contribution_status_id == 2) {
-      // previously created but not processed
-      $contribution_id = $dao->original_contribution_id;
-    }
+    // for now, any other statuses are skipped
     else {
       Civi::log()->warning("Moneris: contribution ID {$dao->original_contribution_id} has an unexpected status: {$dao->contribution_status_id} -- skipping renewal.");
     }
