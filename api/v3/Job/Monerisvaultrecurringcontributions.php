@@ -181,8 +181,7 @@ WHERE
         $update_params['trxn_result_code'] = (integer) $result->getResponseCode();
         $update_params['trxn_id'] = $result->getTxnNumber();
         $update_params['gross_amount'] = $result->getTransAmount();
-        $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
-        $update_params['contribution_status_id'] = array_search('Completed', $statuses);
+        $update_params['contribution_status_id'] = 1;  // Completed
       }
 
       civicrm_api3('Contribution', 'create', $update_params);
