@@ -139,7 +139,7 @@ class CRM_Moneris_Utils {
   }
 
   static function &checkResult(&$response) {
-    if (!$response->getComplete())) {
+    if (!$response->getComplete()) {
       $e = CRM_Core_Error::singleton();
       $e->push(9999, 0, NULL, $response->getMessage());
       return $e;
