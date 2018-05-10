@@ -110,6 +110,7 @@ WHERE
       $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($payment_params['amount']);
       $repeat_params = [
         'contribution_recur_id' => $dao->recur_id,
+        'contact_id' => $dao->contact_id,
         'original_contribution_id' => $dao->original_contribution_id,
         'invoice_id' => $invoice_id,
         'contribution_status_id' => 2,  // Pending
@@ -295,23 +296,8 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
   $contribution->tax_amount = $new_tax_amount;
   $contribution->save();
 
-  // Fetch all memberships for this contribution and associate the (future) contribution
-  // FIXME: not sure about this one - at least ensure it works for non membership contribution
-  /*$sql2 = 'SELECT m.contact_id, m.id as membership_id
-      FROM civicrm_membership m
-      LEFT JOIN civicrm_membership_payment mp ON (mp.membership_id = m.id)
-      LEFT JOIN civicrm_contribution contrib ON (contrib.id = mp.contribution_id)
-      WHERE m.contact_id = %1
-        AND m.status_id = 3'; // FIXME hardcoded status (renewal ready)
-  $dao2 = CRM_Core_DAO::executeQuery($sql2, [
-    1 => [$dao->contact_id, 'Positive'],
-  ]);
-  while ($dao2->fetch()) {
-    civicrm_api3('MembershipPayment', 'create', [
-      'contribution_id' => $contribution->id,
-      'membership_id' => $dao2->membership_id,
-    ]);
-  }*/
+  // TODO: Fetch membership for this contribution and associate the (future) contribution ?
+  // Should not be necessary if the contribution_recur is correctly defined
 
   return array(
     'id' => $contribution->id,
