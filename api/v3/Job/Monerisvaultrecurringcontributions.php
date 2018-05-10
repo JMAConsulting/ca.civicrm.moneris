@@ -171,7 +171,7 @@ WHERE
       // whatever is wrong, we must update the status to failed
       if (is_a($result, 'CRM_Core_Error') || !$success) {
         $update_params['payment_status_id'] = 4;  // Failed
-        Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
+        Civi::log()->error('Moneris: failed payment: ' . $result->getMessage());
       }
       else {
         $update_params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
