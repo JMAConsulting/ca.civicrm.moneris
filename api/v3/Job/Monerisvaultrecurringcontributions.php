@@ -158,25 +158,29 @@ WHERE
         $result = CRM_Moneris_Utils::processTokenPayment($paymentProcessorObj, $payment_params['token'], $payment_params['invoiceID'], $payment_params['amount']);
       }
       catch (PaymentProcessorException $e) {
-        $result = $e;
+        Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
         $success = FALSE;
       }
 
-      // update the current contribution
+      if (is_a($result, 'CRM_Core_Error')) {
+        Civi::log()->error('Moneris: failed payment: ' . $result->getMessages());
+        $success = FALSE;
+      }
+
+      // now, update the current contribution, at least the status
       $update_params = array(
         'id' => $contribution_id,
         'contact_id' => $payment_params['contactID'],
       );
 
       // whatever is wrong, we must update the status to failed
-      if (is_a($result, 'CRM_Core_Error') || !$success) {
+      if (!$success) {
         $update_params['payment_status_id'] = 4;  // Failed
-        Civi::log()->error('Moneris: failed payment: ' . $result->getMessage());
       }
       else {
-        $update_params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
-        $update_params['trxn_id'] = $mpgResponse->getTxnNumber();
-        $update_params['gross_amount'] = $mpgResponse->getTransAmount();
+        $update_params['trxn_result_code'] = (integer) $result->getResponseCode();
+        $update_params['trxn_id'] = $result->getTxnNumber();
+        $update_params['gross_amount'] = $result->getTransAmount();
         $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
         $update_params['payment_status_id'] = array_search('Completed', $statuses);
       }
