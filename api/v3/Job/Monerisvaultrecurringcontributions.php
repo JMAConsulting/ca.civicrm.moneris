@@ -58,8 +58,8 @@ WHERE
     // If catching up, we need to manually update the next_sched_contribution_date
     // because CRM_Contribute_BAO_ContributionRecur::updateOnNewPayment() only updates
     // if the receive_date = next_sched_contribution_date.
-    $sql .= ' AND (cr.next_sched_contribution_date <= CURDATE()
-                OR (cr.next_sched_contribution_date IS NULL AND cr.start_date <= CURDATE()))';
+    $sql .= ' AND (DATE(cr.next_sched_contribution_date) <= CURDATE()
+                OR (cr.next_sched_contribution_date IS NULL AND DATE(cr.start_date) <= CURDATE()))';
   }
   // FIXME: ensure that we have only one of each recurring contribution ?
   //$sql .= 'GROUP BY c.contribution_recur_id';
@@ -92,6 +92,7 @@ WHERE
       'currencyID' => $dao->currency,
       'invoiceID' => $invoice_id,
       'payment_token_id' => $dao->payment_token_id,
+      'token' => $dao->token,
       'street_address' => '',
       'city' => '',
       'state_province' => '',
@@ -120,6 +121,7 @@ WHERE
         $contribution_id = $result['id'];
         civicrm_api3('Contribution', 'create', [
           'id' => $contribution_id,
+          'contact_id' => $payment_params['contactID'],
           'invoice_id' => $invoice_id,
         ]);
       }
@@ -147,24 +149,38 @@ WHERE
     }
 
     if ($contribution_id) {
-      // update the current contribution
-      $payment_params['id'] = $contribution_id;
+
+      $paymentProcessorObj = Civi\Payment\System::singleton()->getByProcessor($paymentProcessor);
 
       // processing the payment
+      $success = TRUE;
       try {
-        CRM_Moneris_Utils::processTokenPayment($paymentProcessor, $dao->token, $invoice_id, $payment_params['amount']);
+        $mpgResponse = CRM_Moneris_Utils::processTokenPayment($paymentProcessorObj, $payment_params['token'], $payment_params['invoiceID'], $payment_params['amount']);
       }
       catch (PaymentProcessorException $e) {
         Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
-        $payment_params['payment_status_id'] = 4;  // Failed
+        $success = FALSE;
       }
 
-      //
-      civicrm_api3('Contribution', 'create', [
+      // update the current contribution
+      $update_params = array(
         'id' => $contribution_id,
-        'contribution_status_id' => $payment_params['payment_status_id'],
-        'trxn_id' => $payment_params['payment_status_id'],
-      ]);
+        'contact_id' => $payment_params['contactID'],
+      );
+
+      // whatever is wrong, we must update the status to failed
+      if (is_a($result, 'CRM_Core_Error') || !$success) {
+        $update_params['payment_status_id'] = 4;  // Failed
+      }
+      else {
+        $update_params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
+        $update_params['trxn_id'] = $mpgResponse->getTxnNumber();
+        $update_params['gross_amount'] = $mpgResponse->getTransAmount();
+        $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
+        $update_params['payment_status_id'] = array_search('Completed', $statuses);
+      }
+
+      civicrm_api3('Contribution', 'create', $update_params);
 
       // TODO: update recurring payment status to In Progress ?
     }
@@ -202,7 +218,7 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
   // but we will update this in the API call that processes this.
   $contribution->contribution_status_id = 2; // Pending
   $contribution->receive_date = date('YmdHis');
-  foreach ($param as $key => $value) {
+  foreach ($params as $key => $value) {
     $contribution->$key = $value;
   }
   $contribution->save();
@@ -213,7 +229,10 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
   foreach ($taxRates as $ft => &$values) {
     $taxRates[$ft] = $taxes['TAX_TOTAL'];
   }
-  $tax_rate = $taxRates[$contribution->financial_type_id] / 100;
+  $tax_rate = 0;
+  if (array_key_exists($contribution->financial_type_id, $taxRates)) {
+    $tax_rate = $taxRates[$contribution->financial_type_id] / 100;
+  }
 
   // now that we have a contribution, let's update it
   $lineitem_result = civicrm_api3('LineItem', 'get', [
@@ -228,19 +247,19 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
   foreach ($lineitem_result['values'] as $original_line_item) {
     // fixing line item
     $p = [
-      'entity_table' => $original_line_item['entity_table'],
+      'entity_table' => CRM_Utils_Array::value('entity_table', $original_line_item),
       // FIXME: could we have something different that contribution / membership ? might be a problem
       'entity_id' => ($original_line_item['entity_table'] == 'civicrm_contribution') ? $contribution->id : $original_line_item['entity_id'],
       'contribution_id' => $contribution->id,
-      'price_field_id' => $original_line_item['price_field_id'],
-      'label' => $original_line_item['label'],
-      'qty' => $original_line_item['qty'],
-      'unit_price' => $original_line_item['unit_price'],
-      'line_total' => $original_line_item['line_total'],
-      'participant_count' => $original_line_item['participant_count'],
-      'price_field_value_id' => $original_line_item['price_field_value_id'],
-      'financial_type_id' => $original_line_item['financial_type_id'],
-      'deductible_amount' => $original_line_item['deductible_amount'],
+      'price_field_id' => CRM_Utils_Array::value('price_field_id', $original_line_item),
+      'label' => CRM_Utils_Array::value('label', $original_line_item),
+      'qty' => CRM_Utils_Array::value('qty', $original_line_item),
+      'unit_price' => CRM_Utils_Array::value('unit_price', $original_line_item),
+      'line_total' => CRM_Utils_Array::value('line_total', $original_line_item),
+      'participant_count' => CRM_Utils_Array::value('participant_count', $original_line_item),
+      'price_field_value_id' => CRM_Utils_Array::value('price_field_value_id', $original_line_item),
+      'financial_type_id' => CRM_Utils_Array::value('financial_type_id', $original_line_item),
+      'deductible_amount' => CRM_Utils_Array::value('deductible_amount', $original_line_item),
     ];
     // Fetch the current amount of the line item (handle price increases).
     if (!empty($original_line_item['price_field_value_id'])) {
