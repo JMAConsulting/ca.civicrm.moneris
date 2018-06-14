@@ -191,7 +191,7 @@ function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
                               );
     if (_moneris_civicrm_is_moneris($payment_processor_id)) {
       // days at which we want to make the recurring payment
-      // FIXME: should be a settings
+      // FIXME: should be a setting
       $allow_days = array(15);
 
       switch ($objectName) {
@@ -248,4 +248,3 @@ function moneris_civicrm_links($op, $objectName, $objectId, &$links, &$mask, &$v
     $values['contribId'] = $objectId;
   }
 }
-
