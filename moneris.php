@@ -181,45 +181,28 @@ function _moneris_civicrm_is_moneris($payment_processor_id) {
  */
 function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
   // since this function gets called a lot, quickly determine if I care about the record being created
-  if (('create' == $op) && ('Contribution' == $objectName || 'ContributionRecur' == $objectName) && !empty($params['contribution_status_id'])) {
-    // watchdog('moneris_civicrm','hook_civicrm_pre for Contribution <pre>@params</pre>',array('@params' => print_r($params));
+  if (('create' == $op) && ('ContributionRecur' == $objectName) && !empty($params['contribution_status_id'])) {
     // figure out the payment processor id, not nice
-    $payment_processor_id = ('ContributionRecur' == $objectName) ? $params['payment_processor_id'] :
-                              (!empty($params['payment_processor']) ? $params['payment_processor'] :
-                                (!empty($params['contribution_recur_id']) ? _moneris_civicrm_get_payment_processor_id($params['contribution_recur_id']) :
-                                 0)
-                              );
+    $payment_processor_id = $params['payment_processor_id'];
     if (_moneris_civicrm_is_moneris($payment_processor_id)) {
       // days at which we want to make the recurring payment
       // FIXME: should be a setting
       $allow_days = array(15);
 
-      switch ($objectName) {
-        case 'ContributionRecur':
-          // calculate the date of the next schedule contribution
-          $params['contribution_status_id'] = 5;
-          if (empty($params['next_sched_contribution_date'])) {
-            $next = strtotime('+'.$params['frequency_interval'].' '.$params['frequency_unit']);
-            $params['next_sched_contribution_date'] = date('YmdHis', $next);
-          }
-          if (!empty($params['next_sched_contribution_date'])) {
-            if (max($allow_days) > 0) {
-              $init_time = ('create' == $op) ? time() : strtotime($params['next_sched_contribution_date']);
-              $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
-              $params['next_sched_contribution_date'] = date('YmdHis', $from_time);
-            }
-          }
-          break;
-
-        case 'Contribution':
-          if (!empty($params['contribution_recur_id'])) {
-            if (0 < max($allow_days)) {
-              $from_time = _moneris_contributionrecur_next(strtotime($params['receive_date']),$allow_days);
-              $params['receive_date'] = date('Ymd', $from_time).'030000';
-            }
-          }
-          break;
+      // calculate the date of the next schedule contribution
+      $params['contribution_status_id'] = 5;
+      if (empty($params['next_sched_contribution_date'])) {
+        $next = strtotime('+'.$params['frequency_interval'].' '.$params['frequency_unit']);
+        $params['next_sched_contribution_date'] = date('Ymd', $next) . '030000';
       }
+      if (!empty($params['next_sched_contribution_date'])) {
+        if (max($allow_days) > 0) {
+          $init_time = ('create' == $op) ? time() : strtotime($params['next_sched_contribution_date']);
+          $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
+          $params['next_sched_contribution_date'] = date('Ymd', $from_time) . '030000';
+        }
+      }
+
     }
   }
 }

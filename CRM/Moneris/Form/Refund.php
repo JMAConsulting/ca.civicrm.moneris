@@ -70,7 +70,7 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
 
     // process the refund
     try {
-      $payment->refundPayment(array('contribution_id' => $this->_id));
+      $result = $payment->refundPayment(array('contribution_id' => $this->_id));
     }
     catch (\Civi\Payment\Exception\PaymentProcessorException $e) {
       CRM_Core_Error::statusBounce($e->getMessage(), $url, ts('Payment Processor Error'));
@@ -79,7 +79,13 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
     // Success
 
     // do the refund in CiviCRM
-    civicrm_api3('Payment', 'cancel', array('id' => $this->_id));
+    civicrm_api3('Contribution', 'create', array(
+      'contribution_id' => $this->_id,
+      'contribution_status_id' => 7, // refund
+      'trxn_id' => $result['trxn_id'],
+      'trxn_result_code' => $result['trxn_result_code'],
+      'cancel_date' => date('YmdHis'),
+    ));
 
     // redirect to contact contribution tab
     CRM_Core_Session::singleton()->replaceUserContext($url);

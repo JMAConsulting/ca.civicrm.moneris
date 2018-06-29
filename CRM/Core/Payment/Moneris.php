@@ -17,6 +17,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   CONST MONERIS_API_TRANSACTION_TYPE_CAPTURE = '02';
   CONST MONERIS_API_TRANSACTION_TYPE_REFUND = '04';
   CONST MONERIS_DO_RECURRING = 1;
+
+  CONST MONERIS_RECURRING_PROCESS_NOW = 1;
+
   /**
    * We only need one instance of this object. So we use the singleton
    * pattern and cache the instance in this variable
@@ -181,8 +184,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       }
     }
 
-    //this code based on Moneris example code #
-
     //create an mpgCustInfo object
     $mpgCustInfo = new mpgCustInfo();
     //call set methods of the mpgCustinfo object
@@ -217,17 +218,23 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
           'payment_token_id' => $token_id,
         ));
       }
+    }
+
+    if ($isRecur && !MONERIS_RECURRING_PROCESS_NOW) {
 
       // only check the credit card
       // payment will be done later by a cron task (could be done in a future day)
       // we don't use the orderid because we want to reserve it for the real transaction
       $result = CRM_Moneris_Utils::cardVerification($this, $token, $orderid . '-check');
+
     } else {
+
       $amount = sprintf('%01.2f', $amount);
       $extraParams = array(
         'cust_info' =>  $mpgCustInfo
       );
       $result = CRM_Moneris_Utils::processTokenPayment($this, $token, $orderid, $amount, $extraParams);
+
     }
 
     if (is_a($result, 'CRM_Core_Error')) {
@@ -236,24 +243,31 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     // SUCCESS
 
-    $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
+    // FIXME: doesn't work for localized installation
+    //$statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
+    $completed = 1;
+    $pending = 2;
 
+    $mpgResponse = $result;
+    Civi::log()->debug('mpgResponse -- ' . print_r($mpgResponse,1));
     $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
     $params['trxn_id'] = $mpgResponse->getTxnNumber();
     $params['gross_amount'] = $mpgResponse->getTransAmount();
-    $params['payment_status_id'] = array_search('Completed', $statuses);
+    $params['payment_status_id'] = $completed; //array_search('Completed', $statuses);
 
     // add a recurring payment schedule if requested
     // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
     if ($isRecur) {
-
       // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;
 
-      // status pending because the payment will be done later
-      $params['payment_status_id'] = array_search('Pending', $statuses);
+      if (!MONERIS_RECURRING_PROCESS_NOW) {
+        // status pending because the payment will be done later
+        $params['payment_status_id'] = $pending; //array_search('Pending', $statuses);
+      }
     }
 
+    Civi::log()->debug(' -- ' . print_r($params,1));
     return $params;
   }
 
@@ -289,10 +303,24 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       throw new \Civi\Payment\Exception\PaymentProcessorException($e->getMessage());
     }
 
+    Civi::log()->debug('refund -- ' . print_r($contribution,1));
+    // only completed payment can be refund
+    if ($contribution['contribution_status_id'] != 1) {
+      // display an error ?
+      throw new \Civi\Payment\Exception\PaymentProcessorException('Only completed payment can be refunded');
+    }
+
+    // FIXME: we might want to support void from payment that are not yet on the payer billing (won't even appear)
+    // either have a clear error message or make it work
+
+    // TODO : have a reliable way to determine whether it's a void or a refund
+    // for now, always do a refund
+    $type = 'refund';
+
     require_once 'CRM/Moneris/mpgClasses.php';
-    // try to do a refund on the token and transacti
+    // try to do a refund on the token and transaction
     $txnArray=array(
-      'type'=>'refund',
+      'type' => $type,
       'txn_number'=> $contribution['trxn_id'],
       'order_id'=> $contribution['invoice_id'],
       // FIXME: amount should be remaining amount to make it work for partial payment / partial refund ??
@@ -303,14 +331,22 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       'dynamic_descriptor' => 'Refund from CiviCRM'
     );
     $mpgTxn = new mpgTransaction($txnArray);
+
+    Civi::log()->debug('refund -- ' . print_r($mpgTxn,1));
     $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn, $this->_profile['server']);
     if (is_a($result, 'CRM_Core_Error')) {
       throw new \Civi\Payment\Exception\PaymentProcessorException(CRM_Core_Error::getMessages($result));
     }
 
-    // TODO: is there something else to do ?
+    // success, get data
 
-    return TRUE;
+    $mpgResponse = $result;
+    $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
+    $params['trxn_id'] = $mpgResponse->getTxnNumber();
+    $params['gross_amount'] = $mpgResponse->getTransAmount();
+    Civi::log()->debug('refund success -- ' . print_r($params,1));
+
+    return $params;
   }
 
 

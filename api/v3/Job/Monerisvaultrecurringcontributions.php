@@ -31,8 +31,14 @@ function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
   }
   $sqlparams = [];
 
+  // TODO: strategy for failure ? right now, we stop any recurring after the first failure
+
+
+  // TODO: pre-process because the contribution_recur status is not properly updated
+
+
   // contribution_status_id: 2=Pending, 5=InProgress
-  // we take only the latest one for each contribution_recur_id (see https://stackoverflow.com/a/123481/2708428)
+  // we take only the latest valid one for each contribution_recur_id (see https://stackoverflow.com/a/123481/2708428)
   // FIXME: a recurring payment with only one failed payment won't work
   // (can only happen if the card verification has worked but the payment a few days later didn't)
   $sql = "
@@ -175,8 +181,10 @@ WHERE
       );
 
       // whatever is wrong, we must update the status to failed
+      $recurring_status = 5;
       if (!$success) {
         $update_params['contribution_status_id'] = 4;  // Failed
+        $recurring_status = 4;
       }
       else {
         $update_params['trxn_result_code'] = (integer) $result->getResponseCode();
@@ -187,7 +195,8 @@ WHERE
 
       civicrm_api3('Contribution', 'create', $update_params);
 
-      // TODO: update recurring payment status to In Progress ?
+      // update recurring payment status to In Progress or Failed
+      civicrm_api3('ContributionRecur', 'create', array('id' => $dao->recur_id, 'contribution_status_id' => $recurring_status));
     }
 
   }
