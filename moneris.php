@@ -168,18 +168,9 @@ function _moneris_civicrm_is_moneris($payment_processor_id) {
 /*
  * hook_civicrm_pre
  *
- * Handle special cases of creating contributions records (regular and recurring) when using Moneris
- *
- * 1. CiviCRM assumes all recurring contributions need to be confirmed using the IPN mechanism.
- *    This is not true for Moneris recurring contributions, because I'm testing with a capture first.
- *    So when creating a contribution that is part of a recurring series, test for status = 2, and set to status = 1 instead.
- *    Do this for the initial and recurring contribution record.
- *    The (subsequent) recurring contributions' status id is set explicitly in the job that creates it, and doesn't need this modification.
- *
- * TODO: update this code with constants for the various id values of 1 and 2.
- * TODO: CiviCRM should have nicer ways to handle this.
+ * FIXME: it should go to doDirectPayment
  */
-function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
+/*function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
   // since this function gets called a lot, quickly determine if I care about the record being created
   if (('create' == $op) && ('ContributionRecur' == $objectName) && !empty($params['contribution_status_id'])) {
     // figure out the payment processor id, not nice
@@ -190,22 +181,22 @@ function moneris_civicrm_pre($op, $objectName, $objectId, &$params) {
       $allow_days = array(15);
 
       // calculate the date of the next schedule contribution
-      $params['contribution_status_id'] = 5;
       if (empty($params['next_sched_contribution_date'])) {
         $next = strtotime('+'.$params['frequency_interval'].' '.$params['frequency_unit']);
         $params['next_sched_contribution_date'] = date('Ymd', $next) . '030000';
+        Civi::log()->debug('next sched 1 -- ' . print_r($params,1));
       }
       if (!empty($params['next_sched_contribution_date'])) {
         if (max($allow_days) > 0) {
-          $init_time = ('create' == $op) ? time() : strtotime($params['next_sched_contribution_date']);
+          $init_time = strtotime($params['next_sched_contribution_date']);
           $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
           $params['next_sched_contribution_date'] = date('Ymd', $from_time) . '030000';
+          Civi::log()->debug('next sched 2 -- ' . print_r($params,1));
         }
       }
-
     }
   }
-}
+}*/
 
 
 function _moneris_contributionrecur_next($from_time, $allow_mdays) {

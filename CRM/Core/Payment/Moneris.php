@@ -210,15 +210,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // now that we have a token and customer info
     // ensure that the credit card is good or process the payment
 
-    if ($isRecur) {
-      // associate token_id to recurring contribution
-      if (!empty($token_id) && !empty($params['contributionRecurID'])) {
-        $result = civicrm_api3('ContributionRecur', 'create', array(
-          'id' => $params['contributionRecurID'],
-          'payment_token_id' => $token_id,
-        ));
-      }
-    }
 
     if ($isRecur && !MONERIS_RECURRING_PROCESS_NOW) {
 
@@ -247,9 +238,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     //$statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
     $completed = 1;
     $pending = 2;
+    $ongoing = 5;
 
     $mpgResponse = $result;
-    Civi::log()->debug('mpgResponse -- ' . print_r($mpgResponse,1));
+    //Civi::log()->debug('mpgResponse -- ' . print_r($mpgResponse,1));
     $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
     $params['trxn_id'] = $mpgResponse->getTxnNumber();
     $params['gross_amount'] = $mpgResponse->getTransAmount();
@@ -258,16 +250,46 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     // add a recurring payment schedule if requested
     // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
     if ($isRecur) {
+
+      $recurring_status = $ongoing;
+
+      if (MONERIS_RECURRING_PROCESS_NOW) {
+        $next = strtotime('+'.$params['frequency_interval'].' '.$params['frequency_unit']);
+        $next_sched_contribution_date = date('YmdHis', $next);
+      }
+      else {
+        // status pending because the payment will be done later
+        $params['payment_status_id'] = $pending; //array_search('Pending', $statuses);
+        $recurring_status = $pending;
+        $next_sched_contribution_date = date('YmdHis');
+      }
+
+      // fix next date to take allow days into account
+      // days at which we want to make the recurring payment
+      // FIXME: should be a setting
+      $allow_days = array(15);
+      if (!empty($next_sched_contribution_date)) {
+        if (max($allow_days) > 0) {
+          $init_time = strtotime($next_sched_contribution_date);
+          $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
+          $next_sched_contribution_date = date('Ymd', $from_time) . '030000';
+        }
+      }
+
       // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;
 
-      if (!MONERIS_RECURRING_PROCESS_NOW) {
-        // status pending because the payment will be done later
-        $params['payment_status_id'] = $pending; //array_search('Pending', $statuses);
+      // associate token_id to recurring contribution
+      if (!empty($token_id) && !empty($params['contributionRecurID'])) {
+        $result = civicrm_api3('ContributionRecur', 'create', array(
+          'id' => $params['contributionRecurID'],
+          'payment_token_id' => $token_id,
+          'contribution_status_id' =>  $recurring_status,
+          'next_sched_contribution_date' => $next_sched_contribution_date,
+        ));
       }
     }
 
-    Civi::log()->debug(' -- ' . print_r($params,1));
     return $params;
   }
 
