@@ -47,7 +47,7 @@ class CRM_Moneris_Utils {
       // 'cust_id' => $params['contactID'],
     );
 
-        //create a transaction object passing the hash created above
+    //create a transaction object passing the hash created above
     $mpgTxn = new mpgTransaction($txnArray);
     // add customer information if any
     if (!empty($params['cust_info'])) {

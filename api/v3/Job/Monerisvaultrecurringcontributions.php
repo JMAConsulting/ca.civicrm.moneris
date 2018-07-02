@@ -24,17 +24,78 @@ function _civicrm_api3_job_Monerisvaultrecurringcontributions_spec(&$spec) {
  */
 function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
 
+  // option to update amount and taxes by going through all line items
+  // require taxes enabled and extension cdntaxcalculator for taxes updates
+  if ($params['update_amounts_and_taxes'] && !class_exists('CRM_Cdntaxcalculator_BAO_CDNTaxes')) {
+    throw new CRM_Core_Exception(ts('cdntaxcalculator extension must be enabled to run with params update_amounts_and_taxes=1'));
+  }
+
+  // FIXME: CiviCRM send receipt before the payment and the amount seems wrong
+  // until we fix this, just throw an exception
+  if (!isset($params['update_amounts_and_taxes']) || !$params['update_amounts_and_taxes']) {
+    throw new CRM_Core_Exception(ts('Only support update_amounts_and_taxes=1 mode'));
+  }
+
   // Running this job in parallel could generate bad duplicate contributions.
   $lock = new CRM_Core_Lock('civicrm.job.monerisvaultrecurringcontributions');
   if (!$lock->acquire()) {
     return civicrm_api3_create_success(ts('Failed to acquire lock. No contribution records were processed.'));
   }
+
+  // for logging
+  $payments = [];
+
+  // not used, but we could add some params to limit which recurring payment to do
   $sqlparams = [];
 
   // TODO: strategy for failure ? right now, we stop any recurring after the first failure
+  // we might want to have different settings (retry x times every x days?)
 
 
-  // TODO: pre-process because the contribution_recur status is not properly updated
+  // pre-process: in case the next_schedule_contribution_date is not properly updated
+  // we don't want to make several payment in a row for the same recurring
+  // if there is a contribution with a receive date greater than the next scheduled date, we can assume the status or date should be updated
+  $sql = "
+SELECT
+  cr.id as recur_id,
+  cr.next_sched_contribution_date,
+  cr.frequency_interval, cr.frequency_unit,
+  c.receive_date, c.contribution_status_id
+FROM
+  civicrm_contribution_recur cr
+  INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
+  INNER JOIN civicrm_payment_token pt ON cr.payment_token_id = pt.id
+  INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
+  LEFT JOIN civicrm_contribution c2 ON (c.contribution_recur_id = c2.contribution_recur_id AND c.id < c2.id)
+WHERE
+  pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
+  AND cr.contribution_status_id IN (2,5)
+  AND c2.id IS NULL
+  AND (cr.next_sched_contribution_date IS NOT NULL AND c.receive_date >= cr.next_sched_contribution_date)";
+  $dao = CRM_Core_DAO::executeQuery($sql);
+
+  // TODO: add some log
+  while ($dao->fetch()) {
+    // pending
+    if ($dao->contribution_status_id == 1) {
+      // if the next contribution date is in the past, let's remove the next contribution date
+      // so that we can process the payment right away
+      civicrm_api3('ContributionRecur', 'create', array('id' => $dao->recur_id, 'next_sched_contribution_date' => NULL));
+    }
+    // completed
+    elseif ($dao->contribution_status_id == 2) {
+      // we should update the next contribution date
+      $next = strtotime($dao->receive_date.'+'.$dao->frequency_interval.' '.$dao->frequency_unit);
+      $next_sched_contribution_date = date('YmdHis', $next);
+      $next_sched_contribution_date = moneris_fixNextScheduleDate($next_sched_contribution_date);
+      civicrm_api3('ContributionRecur', 'create', array('id' => $dao->recur_id, 'next_sched_contribution_date' => $next_sched_contribution_date));
+    }
+    else {
+      // let's update the recurring status so that it won't be processed
+      $status = 4; // failed
+      civicrm_api3('ContributionRecur', 'create', array('id' => $dao->recur_id, 'contribution_status_id' => $status));
+    }
+  }
 
 
   // contribution_status_id: 2=Pending, 5=InProgress
@@ -46,7 +107,8 @@ SELECT
   cr.id as recur_id, cr.contact_id, cr.payment_token_id,
   c.id as original_contribution_id, c.contribution_status_id,
   c.total_amount, c.currency, c.invoice_id,
-  pt.token
+  pt.token,
+  cr.frequency_interval, cr.frequency_unit
 FROM
   civicrm_contribution_recur cr
   INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
@@ -73,6 +135,13 @@ WHERE
   $output = [];
   $dao = CRM_Core_DAO::executeQuery($sql, $sqlparams);
   while ($dao->fetch()) {
+
+    // logging
+    $currentlog = array(
+      'contribution_recur_id' => $dao->recur_id,
+      'success' => 0,
+    );
+
     // If the initial contribution is pending (2), then we use that
     // invoice_id for the payment processor. Otherwise we generate a new one.
     $invoice_id = NULL;
@@ -124,7 +193,9 @@ WHERE
       ];
 
       if (!isset($params['update_amounts_and_taxes']) || !$params['update_amounts_and_taxes']) {
-        // don't update so do the standard repeat tranapaction
+        // keep the same amount so use the standard repeat tranapaction
+        // FIXME 1: if we go this way amount seems not right ? needs testing
+        // FIXME 2: seem to send a receipt even if we don't have the payment done
         $result = civicrm_api3('Contribution', 'repeattransaction', $repeat_params);
         // Presumably there is a good reason why CiviCRM is not storing
         // our new invoice_id. Anyone know?
@@ -136,17 +207,11 @@ WHERE
         ]);
       }
       else {
-        // update amount and taxes by going through all line items
-        // TODO: we must have taxes enabled and extension cdntaxcalculator for taxes updates
-        // FIXME: check for extension instead
-        if (!class_exists('CRM_Cdntaxcalculator_BAO_CDNTaxes')) {
-          throw new CRM_Core_Exception(ts('cdntaxcalculator extension must be enabled to run with params update_amounts_and_taxes=1'));
-        }
 
-        // duplicate contribution and update amounts
+        // duplicate contribution and update amounts (taxes and selected price items)
         $result = _repeat_transaction_with_updates($repeat_params, $params['payment_processor_id']);
         $contribution_id = $result['id'];
-        $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($result['total_amount']);
+        $payment_params['amount'] = CRM_Utils_Rule::cleanMoney($result['amount']);
 
       }
     }
@@ -161,16 +226,17 @@ WHERE
 
       // processing the payment
       $success = TRUE;
+      $error_msg = '';
       try {
         $result = CRM_Moneris_Utils::processTokenPayment($paymentProcessorObj, $payment_params['token'], $payment_params['invoiceID'], $payment_params['amount']);
       }
       catch (PaymentProcessorException $e) {
-        Civi::log()->error('Moneris: failed payment: ' . $e->getMessage());
+        $error_msg = 'Moneris: failed payment: ' . $e->getMessage();
         $success = FALSE;
       }
 
       if (is_a($result, 'CRM_Core_Error')) {
-        Civi::log()->error('Moneris: failed payment: ' . CRM_Core_Error::getMessages($result));
+        $error_msg = 'Moneris: failed payment: ' . CRM_Core_Error::getMessages($result);
         $success = FALSE;
       }
 
@@ -181,25 +247,78 @@ WHERE
       );
 
       // whatever is wrong, we must update the status to failed
-      $recurring_status = 5;
+      $recur_upd_params = array(
+        'id' => $dao->recur_id,
+        'contribution_status_id' => 5,
+      );
       if (!$success) {
         $update_params['contribution_status_id'] = 4;  // Failed
-        $recurring_status = 4;
+        $recur_upd_params['contribution_status_id'] = 4;
       }
       else {
         $update_params['trxn_result_code'] = (integer) $result->getResponseCode();
         $update_params['trxn_id'] = $result->getTxnNumber();
         $update_params['gross_amount'] = $result->getTransAmount();
         $update_params['contribution_status_id'] = 1;  // Completed
+
+        // Update the next_sched_contribution_date
+        $next = strtotime('+'.$dao->frequency_interval.' '.$dao->frequency_unit);
+        $next_sched_contribution_date = date('YmdHis', $next);
+        $next_sched_contribution_date = moneris_fixNextScheduleDate($next_sched_contribution_date);
+        $recur_upd_params['next_sched_contribution_date'] = $next_sched_contribution_date;
+
       }
+
+      // FIXME: should we call completeOrder instead of all those ?
+      // there is so much stuff in there, we might missed something required
+      // but not so bad to keep it simple
 
       civicrm_api3('Contribution', 'create', $update_params);
 
       // update recurring payment status to In Progress or Failed
-      civicrm_api3('ContributionRecur', 'create', array('id' => $dao->recur_id, 'contribution_status_id' => $recurring_status));
+      // + next_sched_contribution_date
+      civicrm_api3('ContributionRecur', 'create', $recur_upd_params);
+
+
+      if ($success) {
+        // update any memberships related to this contribution
+        $contributionDAO = new CRM_Contribute_BAO_Contribution();
+        $contributionDAO->id = $contribution_id;
+        if ($contributionDAO->find(TRUE)) {
+          $membershipIDs = array();
+          $contributionDAO->loadRelatedMembershipObjects($membershipIDs);
+          $memberships = $contributionDAO->_relatedObjects['membership'];
+          if (!empty($memberships)) {
+            CRM_Contribute_BAO_Contribution::updateMembershipBasedOnCompletionOfContribution(
+              $contributionDAO,
+              $memberships,
+              $contribution_id,
+              date('YmdHis')
+            );
+          }
+        }
+      }
+
+      // ok let's send a receipt of the transaction
+      civicrm_api3('Contribution', 'sendconfirmation', array(
+        'id' => $contribution_id,
+        'payment_processor_id' => $params['payment_processor_id'],
+      ));
+
+      // logging
+      $currentlog['success'] = $success;
+      $currentlog['error'] = $error_msg;
+      $currentlog['contribution_id'] = $contribution_id;
+      $currentlog['original_amount'] = $dao->total_amount;
+      $currentlog['new_amount'] = $payment_params['amount'];
+
     }
 
+    $payments[] = $currentlog;
+
   }
+
+  return civicrm_api3_create_success($payments, $params, 'Job', 'monerisvaultrecurringcontributions');
 
 }
 
@@ -283,7 +402,8 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
       $p['unit_price'] = $pfv['amount'];
       $p['line_total'] = $pfv['amount'] * $p['qty'];
       $p['tax_amount'] = round($p['line_total'] * $tax_rate, 2);
-      $p['line_total'] += $p['tax_amount'];
+      // taxes are included in contribution total amount but not in line_total
+      //$p['line_total'] += $p['tax_amount'];
     }
     elseif (!$original_line_item['line_total']) {
       // Probably a 0$ item, so it's OK to not have a price_field_value_id
@@ -310,7 +430,7 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
 
   return array(
     'id' => $contribution->id,
-    'total_amount' => $new_total_amount,
+    'amount' => number_format($new_total_amount + $new_tax_amount, 2),
   );
 
 }

@@ -198,6 +198,20 @@ function _moneris_civicrm_is_moneris($payment_processor_id) {
   }
 }*/
 
+function moneris_fixNextScheduleDate($next_sched_contribution_date) {
+  // fix the date to only get an allowed day
+  $allow_days = array(15);
+  if (!empty($next_sched_contribution_date)) {
+    if (max($allow_days) > 0) {
+      $init_time = strtotime($next_sched_contribution_date);
+      $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
+      $next_sched_contribution_date = date('Ymd', $from_time) . '030000';
+    }
+  }
+
+  return $next_sched_contribution_date;
+
+}
 
 function _moneris_contributionrecur_next($from_time, $allow_mdays) {
   $dp = getdate($from_time);

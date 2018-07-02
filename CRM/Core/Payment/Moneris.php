@@ -248,7 +248,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $params['payment_status_id'] = $completed; //array_search('Completed', $statuses);
 
     // add a recurring payment schedule if requested
-    // NOTE: recurring payments will be scheduled for the 20th, TODO: make configurable
+    // NOTE: recurring payments will be scheduled for the 15th, TODO: make configurable
     if ($isRecur) {
 
       $recurring_status = $ongoing;
