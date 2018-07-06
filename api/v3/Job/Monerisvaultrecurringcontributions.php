@@ -195,7 +195,8 @@ WHERE
       if (!isset($params['update_amounts_and_taxes']) || !$params['update_amounts_and_taxes']) {
         // keep the same amount so use the standard repeat tranapaction
         // FIXME 1: if we go this way amount seems not right ? needs testing
-        // FIXME 2: seem to send a receipt even if we don't have the payment done
+        // FIXME 2: seem to send a receipt even if we don't have the payment done see if is_email_receipt = FALSE solves this
+        $repeat_params['is_email_receipt'] = FALSE;
         $result = civicrm_api3('Contribution', 'repeattransaction', $repeat_params);
         // Presumably there is a good reason why CiviCRM is not storing
         // our new invoice_id. Anyone know?
@@ -208,6 +209,7 @@ WHERE
       }
       else {
 
+        // FIXME: it should be generic and not specificaly related to Moneris... but how ?
         // duplicate contribution and update amounts (taxes and selected price items)
         $result = _repeat_transaction_with_updates($repeat_params, $params['payment_processor_id']);
         $contribution_id = $result['id'];
@@ -244,6 +246,8 @@ WHERE
       $update_params = array(
         'id' => $contribution_id,
         'contact_id' => $payment_params['contactID'],
+        // ensure the payment is considered done and have a receipt sent
+        'is_pay_later' => 0,
       );
 
       // whatever is wrong, we must update the status to failed
@@ -256,24 +260,30 @@ WHERE
         $recur_upd_params['contribution_status_id'] = 4;
       }
       else {
+        $mpgResponse = $result;
+
+        // for log and user receipt
+        $receipt = CRM_Moneris_Utils::generateReceipt($payment_params, $mpgResponse);
+
+        $update_params['invoice_id'] = $payment_params['invoiceID'];
         $update_params['trxn_result_code'] = (integer) $result->getResponseCode();
         $update_params['trxn_id'] = $result->getTxnNumber();
         $update_params['gross_amount'] = $result->getTransAmount();
         $update_params['contribution_status_id'] = 1;  // Completed
+
+        // TODO: add info about transaction (from token ?) for the receipt
+        //$input['card_type_id'] = $mpgResponse->getCardType();
+        $update_params['pan_truncation'] = $mpgResponse->getResDataMaskedPan();
 
         // Update the next_sched_contribution_date
         $next = strtotime('+'.$dao->frequency_interval.' '.$dao->frequency_unit);
         $next_sched_contribution_date = date('YmdHis', $next);
         $next_sched_contribution_date = moneris_fixNextScheduleDate($next_sched_contribution_date);
         $recur_upd_params['next_sched_contribution_date'] = $next_sched_contribution_date;
-
       }
 
-      // FIXME: should we call completeOrder instead of all those ?
-      // there is so much stuff in there, we might missed something required
-      // but not so bad to keep it simple
-
-      civicrm_api3('Contribution', 'create', $update_params);
+      // update contribuion and financials
+      //civicrm_api3('Contribution', 'create', $update_params);
 
       // update recurring payment status to In Progress or Failed
       // + next_sched_contribution_date
@@ -281,29 +291,29 @@ WHERE
 
 
       if ($success) {
-        // update any memberships related to this contribution
-        $contributionDAO = new CRM_Contribute_BAO_Contribution();
+        // FIXME: it will add unwanted financial item (duplicates) - why ?
+        // it seems to be redundant with all the code above (calls ipn)
+        // but because of price recalculation we can't just call this
+        $result = civicrm_api3('Contribution', 'completetransaction', $update_params);
+
+        /*$contributionDAO = new CRM_Contribute_BAO_Contribution();
         $contributionDAO->id = $contribution_id;
         if ($contributionDAO->find(TRUE)) {
-          $membershipIDs = array();
-          $contributionDAO->loadRelatedMembershipObjects($membershipIDs);
-          $memberships = $contributionDAO->_relatedObjects['membership'];
-          if (!empty($memberships)) {
-            CRM_Contribute_BAO_Contribution::updateMembershipBasedOnCompletionOfContribution(
-              $contributionDAO,
-              $memberships,
-              $contribution_id,
-              date('YmdHis')
-            );
-          }
-        }
+          $bao = new CRM_Moneris_BAO_Contribution();
+          $bao->customUpdateMembershipBasedOnCompletionOfContribution(
+            $contributionDAO,
+            $contribution_id,
+            date('YmdHis')
+          );
+        }*/
+
       }
 
       // ok let's send a receipt of the transaction
-      civicrm_api3('Contribution', 'sendconfirmation', array(
+ /*     civicrm_api3('Contribution', 'sendconfirmation', array(
         'id' => $contribution_id,
         'payment_processor_id' => $params['payment_processor_id'],
-      ));
+      ));*/
 
       // logging
       $currentlog['success'] = $success;
@@ -327,44 +337,24 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
     throw new CRM_Core_Exception(ts('No original contribution to duplicate'));
   }
 
-  // Inspiration from civicrm_api3_contribution_repeattransaction()
-  $contribution = new CRM_Contribute_BAO_Contribution();
-  $contribution->id = $params['original_contribution_id'];
-  if (!$contribution->find(TRUE)) {
+  // original inspiration from civicrm_api3_contribution_repeattransaction() but changed a lot
+
+  // get original contribution
+  $original_contribution = new CRM_Contribute_BAO_Contribution();
+  $original_contribution->id = $params['original_contribution_id'];
+  if (!$original_contribution->find(TRUE)) {
     throw new API_Exception('A valid original contribution ID is required', 'invalid_data');
   }
 
-  $original_contribution = clone $contribution;
-  $ids = $input = [];
-
-  // we need to add payment processor if we want the test mode to work
-  // small bug in loadRelatedObjects / getPayment which is not clever enough to take
-  // the test payment processor if contribution is a test
-  $input['payment_processor_id'] = $payment_processor_id;
-
-  $contribution->loadRelatedObjects($input, $ids, TRUE);
-
-  unset($contribution->id, $contribution->receive_date, $contribution->invoice_id, $contribution->trxn_id);
-
-  // Set the contribution status to Pending, since we are not charging yet
-  // and receive_date (for now) set to 'today', even if we haven't charged it yet,
-  // but we will update this in the API call that processes this.
-  $contribution->contribution_status_id = 2; // Pending
-  $contribution->receive_date = date('YmdHis');
-  foreach ($params as $key => $value) {
-    $contribution->$key = $value;
-  }
-  $contribution->save();
-
   // from CRM_Cdntaxcalculator_BAO_CDNTaxes::checkTaxAmount (could we use a function from there instead)
-  $taxes = CRM_Cdntaxcalculator_BAO_CDNTaxes::getTaxRatesForContact($contribution->contact_id);
+  $taxes = CRM_Cdntaxcalculator_BAO_CDNTaxes::getTaxRatesForContact($original_contribution->contact_id);
   $taxRates = CRM_Core_PseudoConstant::getTaxRates();
   foreach ($taxRates as $ft => &$values) {
     $taxRates[$ft] = $taxes['TAX_TOTAL'];
   }
-  $tax_rate = 0;
-  if (array_key_exists($contribution->financial_type_id, $taxRates)) {
-    $tax_rate = $taxRates[$contribution->financial_type_id] / 100;
+  $contrib_tax_rate = 0;
+  if (array_key_exists($original_contribution->financial_type_id, $taxRates)) {
+    $contrib_tax_rate = $taxRates[$original_contribution->financial_type_id] / 100;
   }
 
   // now that we have a contribution, let's update it
@@ -377,13 +367,13 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
   $new_total_amount = 0;
   $new_tax_amount = 0;
   $tax_line_item = NULL;
+  $line_items = [];
   foreach ($lineitem_result['values'] as $original_line_item) {
+
     // fixing line item
     $p = [
       'entity_table' => CRM_Utils_Array::value('entity_table', $original_line_item),
-      // FIXME: could we have something different that contribution / membership ? might be a problem
-      'entity_id' => ($original_line_item['entity_table'] == 'civicrm_contribution') ? $contribution->id : $original_line_item['entity_id'],
-      'contribution_id' => $contribution->id,
+      'entity_id' => CRM_Utils_Array::value('entity_id', $original_line_item),
       'price_field_id' => CRM_Utils_Array::value('price_field_id', $original_line_item),
       'label' => CRM_Utils_Array::value('label', $original_line_item),
       'qty' => CRM_Utils_Array::value('qty', $original_line_item),
@@ -394,6 +384,13 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
       'financial_type_id' => CRM_Utils_Array::value('financial_type_id', $original_line_item),
       'deductible_amount' => CRM_Utils_Array::value('deductible_amount', $original_line_item),
     ];
+
+    // get line_item tax rate or contribution tax rate if no financial_type
+    $tax_rate = $contrib_tax_rate;
+    if (array_key_exists($p['financial_type_id'], $taxRates)) {
+      $tax_rate = $taxRates[$p['financial_type_id']] / 100;
+    }
+
     // Fetch the current amount of the line item (handle price increases).
     if (!empty($original_line_item['price_field_value_id'])) {
       $pfv = civicrm_api3('PriceFieldValue', 'getsingle', [
@@ -413,24 +410,71 @@ function _repeat_transaction_with_updates($params, $payment_processor_id) {
       $p['line_total'] = '0';
       $p['tax_amount'] = '0';
     }
-    $t = civicrm_api3('LineItem', 'create', $p);
+
+    // we don't use api because of tax calculation problems
+    // it will not use the tax amount we have computed
+    //$li = CRM_Price_BAO_LineItem::create($p);
+    $line_items[] = $p;
+    //$t = civicrm_api3('LineItem', 'create', $p);
+
     $new_total_amount += $p['line_total'];
     $new_tax_amount += $p['tax_amount'];
   }
 
-  // Update the total amount and taxes on the contribution
-  $contribution->total_amount = $new_total_amount + $new_tax_amount;
-  $contribution->net_amount = $contribution->total_amount;
-  $contribution->non_deductible_amount = $contribution->total_amount;
-  $contribution->tax_amount = $new_tax_amount;
-  $contribution->save();
+  $p = [
+    'contact_id' => $original_contribution->contact_id,
+    'financial_type_id' => $original_contribution->financial_type_id,
+    'is_test' => $original_contribution->is_test,
+    'payment_instrument_id' => $original_contribution->payment_instrument_id,
+
+    'contribution_recur_id' => $params['contribution_recur_id'],
+    'contribution_status_id' => 2,
+    'receive_date' => date('YmdHis'),
+    'total_amount' => $new_total_amount + $new_tax_amount,
+    'tax_amount' => $new_tax_amount,
+    'payment_processor_id' => $payment_processor_id,
+    'skipLineItem' => 1,
+    'source' => 'Job.Monerisvaultrecurringcontributions',
+
+    // hack - this line is required if we wants to have financial items created
+    'is_pay_later' => 1,
+  ];
+  //$contribution = CRM_Contribute_BAO_Contribution::add($p);
+  $res = civicrm_api3('Contribution', 'create', $p);
+  $contribution_id = $res['id'];
+  CRM_Contribute_BAO_ContributionRecur::copyCustomValues($p['contribution_recur_id'], $contribution_id);
+
+  // add line items
+  $eft = new CRM_Financial_DAO_EntityFinancialTrxn();
+  $eft->entity_id = $contribution_id;
+  $eft->entity_table = 'civicrm_contribution';
+  if (!$eft->find(TRUE)) {
+    throw new API_Exception('The contribution was not properly created', 'invalid_data');
+  }
+  $trxnID = $eft->financial_trxn_id;
+  foreach ($line_items as $p) {
+    // FIXME: could we have something different that contribution / membership ? might be a problem
+    $p['entity_id'] = ($p['entity_table'] == 'civicrm_contribution') ? $contribution_id : $p['entity_id'];
+    $p['contribution_id'] = $contribution_id;
+    // we don't use api because of tax calculation problems
+    // it will replace the tax amount we have computed
+    //$res = civicrm_api3('LineItem', 'create', $p);
+    $li = CRM_Price_BAO_LineItem::create($p);
+    $id = $li->id;
+    $lineItem = civicrm_api3('LineItem', 'getsingle', array('id' => $id));
+    CRM_Lineitemedit_Util::insertFinancialItemOnAdd($lineItem, $trxnID);
+  }
+
+  // remove is_pay_later
+  civicrm_api3('Contribution', 'create', ['id' => $contribution_id, 'is_pay_later' => 0]);
 
   // TODO: Fetch membership for this contribution and associate the (future) contribution ?
   // Should not be necessary if the contribution_recur is correctly defined
 
   return array(
-    'id' => $contribution->id,
+    'id' => $contribution_id,
     'amount' => number_format($new_total_amount + $new_tax_amount, 2),
   );
 
 }
+

@@ -2,6 +2,8 @@
 
 require_once 'moneris.civix.php';
 
+use CRM_ProvInvoice_ExtensionUtil as E;
+
 /**
  * Implementation of hook_civicrm_config
  *
@@ -127,6 +129,48 @@ function moneris_civicrm_caseTypes(&$caseTypes) {
 function moneris_civicrm_alterSettingsFolders(&$metaDataFolders = NULL) {
   _moneris_civix_civicrm_alterSettingsFolders($metaDataFolders);
 }
+
+
+
+/**
+ * hook_civicrm_tokens() implementation
+ * expose the "receipt" token to email messages
+ */
+/*function moneris_civicrm_tokens(&$tokens) {
+  $tokens['contribution'] = array(
+    'contribution.moneris_receipt' => ts('Moneris credit card receipt'),
+  );
+}*/
+
+
+/**
+ * hook_civicrm_tokenValues() implementation
+ * http://wiki.civicrm.org/confluence/display/CRMDOC/Hook+Reference#HookReference-hookcivicrmtokenValues
+ * http://civicrm.org/blogs/colemanw/create-your-own-tokens-fun-and-profit
+ */
+/*function moneris_civicrm_tokenValues(&$values, $cids, $job = null, $tokens = array(), $context = null) {
+  // Only expose the token when doing online contributions
+  //if (! (arg(0) == 'civicrm' && (arg(1) == 'contribute' || arg(1) == 'event'))) {
+  //  return;
+  //}
+  foreach ($cids as $cid) {
+    // Fetch the receipt (assume latest for a given contact ID)
+    $params = array(
+      1 => array($cid, 'Positive'),
+    );
+    $dao = CRM_Core_DAO::executeQuery('SELECT trxn_id FROM civicrm_contribution WHERE contact_id = %1 order by receive_date desc limit 1', $params);
+
+    $values[$cid]['contribution.moneris_receipt'] = '';
+    if ($dao->fetch()) {
+      // last receipt... we should also limit by time
+      $daoR = CRM_Core_DAO::executeQuery("select receipt_msg from civicrm_moneris_receipt where trxn_id = %1 order by id desc limit 1", array(1 => array($dao->trxn_id, 'String')));
+      if ($daoR->fetch()) {
+        $values[$cid]['contribution.moneris_receipt'] = $receipt;
+      }
+    }
+  }
+}*/
+
 
 function _moneris_civicrm_nscd_fid() {
   $codeVer = CRM_Utils_System::version();
