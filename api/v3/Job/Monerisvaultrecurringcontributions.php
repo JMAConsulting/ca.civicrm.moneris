@@ -258,6 +258,9 @@ WHERE
       if (!$success) {
         $update_params['contribution_status_id'] = 4;  // Failed
         $recur_upd_params['contribution_status_id'] = 4;
+
+        // update contribuion and financials
+        civicrm_api3('Contribution', 'create', $update_params);
       }
       else {
         $mpgResponse = $result;
@@ -280,40 +283,14 @@ WHERE
         $next_sched_contribution_date = date('YmdHis', $next);
         $next_sched_contribution_date = moneris_fixNextScheduleDate($next_sched_contribution_date);
         $recur_upd_params['next_sched_contribution_date'] = $next_sched_contribution_date;
-      }
 
-      // update contribuion and financials
-      //civicrm_api3('Contribution', 'create', $update_params);
+        $result = civicrm_api3('Contribution', 'completetransaction', $update_params);
+      }
 
       // update recurring payment status to In Progress or Failed
       // + next_sched_contribution_date
       civicrm_api3('ContributionRecur', 'create', $recur_upd_params);
 
-
-      if ($success) {
-        // FIXME: it will add unwanted financial item (duplicates) - why ?
-        // it seems to be redundant with all the code above (calls ipn)
-        // but because of price recalculation we can't just call this
-        $result = civicrm_api3('Contribution', 'completetransaction', $update_params);
-
-        /*$contributionDAO = new CRM_Contribute_BAO_Contribution();
-        $contributionDAO->id = $contribution_id;
-        if ($contributionDAO->find(TRUE)) {
-          $bao = new CRM_Moneris_BAO_Contribution();
-          $bao->customUpdateMembershipBasedOnCompletionOfContribution(
-            $contributionDAO,
-            $contribution_id,
-            date('YmdHis')
-          );
-        }*/
-
-      }
-
-      // ok let's send a receipt of the transaction
- /*     civicrm_api3('Contribution', 'sendconfirmation', array(
-        'id' => $contribution_id,
-        'payment_processor_id' => $params['payment_processor_id'],
-      ));*/
 
       // logging
       $currentlog['success'] = $success;
