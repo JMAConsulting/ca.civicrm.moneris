@@ -128,6 +128,8 @@ WHERE
   // if the receive_date = next_sched_contribution_date.
   $sql .= ' AND (DATE(cr.next_sched_contribution_date) <= CURDATE()
                  OR (cr.next_sched_contribution_date IS NULL AND DATE(cr.start_date) <= CURDATE()))';
+  // testing before mass processing
+  $sql .= " LIMIT 1";
 
   $paymentProcessor = CRM_Financial_BAO_PaymentProcessor::getPayment($params['payment_processor_id'], $params['payment_processor_mode']);
   $counter = 0;
@@ -141,17 +143,6 @@ WHERE
       'contribution_recur_id' => $dao->recur_id,
       'success' => 0,
     );
-
-    // If the initial contribution is pending (2), then we use that
-    // invoice_id for the payment processor. Otherwise we generate a new one.
-    $invoice_id = NULL;
-    if ($dao->contribution_status_id == 2) {
-      $invoice_id = $dao->invoice_id;
-    }
-    else {
-      // ex: civicrm_api3_contribution_transact() does somethign similar.
-      $invoice_id = sha1(uniqid(rand(), TRUE));
-    }
     // Investigate whether we can use the Contribution.transact API call?
     // it seemed a bit trickier to use, because of pricesets/amounts, more lifting
     // than just calling 'repeattransaction'.
@@ -161,7 +152,7 @@ WHERE
       'billing_last_name' => '',
       'amount' => $dao->total_amount,
       'currencyID' => $dao->currency,
-      'invoiceID' => $invoice_id,
+      //'invoiceID' => $invoice_id,
       'payment_token_id' => $dao->payment_token_id,
       'token' => $dao->token,
       'street_address' => '',
@@ -187,7 +178,7 @@ WHERE
         'contribution_recur_id' => $dao->recur_id,
         'contact_id' => $dao->contact_id,
         'original_contribution_id' => $dao->original_contribution_id,
-        'invoice_id' => $invoice_id,
+        //'invoice_id' => $invoice_id,
         'contribution_status_id' => 2,  // Pending
         'receive_date' => date('YmdHis'),
       ];
@@ -201,11 +192,6 @@ WHERE
         // Presumably there is a good reason why CiviCRM is not storing
         // our new invoice_id. Anyone know?
         $contribution_id = $result['id'];
-        civicrm_api3('Contribution', 'create', [
-          'id' => $contribution_id,
-          'contact_id' => $payment_params['contactID'],
-          'invoice_id' => $invoice_id,
-        ]);
       }
       else {
 
@@ -225,6 +211,25 @@ WHERE
     if ($contribution_id) {
 
       $paymentProcessorObj = Civi\Payment\System::singleton()->getByProcessor($paymentProcessor);
+
+      // If the initial contribution is pending (2), then we use that
+      // invoice_id for the payment processor. Otherwise we generate a new one.
+      $invoice_id = NULL;
+      if ($dao->contribution_status_id == 2) {
+        $invoice_id = $dao->invoice_id;
+      }
+      // create an invoice ID based on the contribution ID for easier searches in Moneris
+      else {
+        // combine the contribution_id with a small hash to have something searchable but unique
+        $invoice_id = $contribution_id .  '-' . substr(sha1(uniqid(rand(), TRUE)),0,6);
+        // in case something goes wrong, we'd better update the invoice id before the processing
+        civicrm_api3('Contribution', 'create', [
+          'id' => $contribution_id,
+          'contact_id' => $payment_params['contactID'],
+          'invoice_id' => $invoice_id,
+        ]);
+      }
+      $payment_params['invoiceID'] = $invoice_id;
 
       // processing the payment
       $success = TRUE;
