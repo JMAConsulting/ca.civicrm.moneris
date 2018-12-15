@@ -300,9 +300,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
    * @return bool|object
    */
   public function cancelSubscription(&$message = '', $params = array()) {
-    // TODO: make it call the Moneris vault and return TRUE when success
-    // also change $message content - see AuthorizeNet for an example
-    return FALSE;
+    // We use vault, so there is no recurring in Moneris - we do this by a schedule job
+    // Let's return TRUE so that CiviCRM cancel the recurring contribution
+    return TRUE;
   }
 
 
