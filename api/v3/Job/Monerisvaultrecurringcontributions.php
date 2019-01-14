@@ -108,13 +108,15 @@ SELECT
   c.id as original_contribution_id, c.contribution_status_id,
   c.total_amount, c.currency, c.invoice_id,
   pt.token,
-  cr.frequency_interval, cr.frequency_unit
+  cr.frequency_interval, cr.frequency_unit,
+  contact.preferred_language
 FROM
   civicrm_contribution_recur cr
   INNER JOIN civicrm_contribution c ON (c.contribution_recur_id = cr.id)
   INNER JOIN civicrm_payment_token pt ON cr.payment_token_id = pt.id
   INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
   LEFT JOIN civicrm_contribution c2 ON (c.contribution_recur_id = c2.contribution_recur_id AND c.id < c2.id)
+  INNER JOIN civicrm_contact contact ON contact.id = c.contact_id
 WHERE
   pp.name = 'Moneris' AND cr.payment_token_id IS NOT NULL
   AND cr.contribution_status_id IN (2,5)
@@ -137,6 +139,10 @@ WHERE
   $output = [];
   $dao = CRM_Core_DAO::executeQuery($sql, $sqlparams);
   while ($dao->fetch()) {
+
+    // FIXME: HACK for receipt in multilingual installation
+    // but should be handled by CiviCRM core by default
+    CRM_Core_BAO_ActionSchedule::setCommunicationLanguage(CRM_Core_I18n::AUTO, $dao->preferred_language);
 
     // logging
     $currentlog = array(
