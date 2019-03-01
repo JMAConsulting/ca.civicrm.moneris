@@ -158,7 +158,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $mpgRequest = new mpgRequest($mpgTxn);
     // watchdog('moneris_civicrm_ca', 'Request: <pre>!request</pre>', array('!request' => print_r($mpgRequest, TRUE)), WATCHDOG_NOTICE);
     // create mpgHttpsPost object which does an https post ##
-    // extra 'server' parameter added to library 
+    // extra 'server' parameter added to library
     $mpgHttpPost = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest, $this->_profile['server']);
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
@@ -193,7 +193,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       $recurInterval = $params['frequency_interval'];
       $day           = 60 * 60 * 24;
       $next          = time();
-      // earliest start date is tomorrow 
+      // earliest start date is tomorrow
       do {
         $next = $next + $day;
         $date = getdate($next);
@@ -333,5 +333,54 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       return NULL;
     }
   }
-}
 
+  public function supportsRefund() {
+    return TRUE;
+  }
+
+  public function doRefundPayment(&$params) {
+    $txnArray = [
+      'type'=>'refund',
+      'txn_number'=> $params['trxn_id'], // financial.trxn_id of the original payment
+      'order_id'=> $params['invoiceID'], // contribution's invoice ID
+      'amount'=> sprintf('%01.2f', $params['amount']),
+      'crypt_type'=>'7',
+      'cust_id' => $params['contactID'],
+    ];
+    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $txnArray); // hook to alter params
+
+    $mpgTxn = new mpgTransaction($txnArray);
+
+    // create a mpgRequest object passing the transaction object created
+    $mpgRequest = new mpgRequest($mpgTxn);
+    $mpgRequest->setProcCountryCode($params['currency']); //"US" for sending transaction to US environment
+
+    // create mpgHttpsPost object which does an https post
+    $mpgHttpPost  = new mpgHttpsPost($store_id, $api_token, $mpgRequest);
+
+    // get an mpgResponse object
+    $mpgResponse = $mpgHttpPost->getMpgResponse();
+
+    $params['trxn_result_code'] = $mpgResponse->getResponseCode();
+    if (self::isError($mpgResponse)) {
+      if ($params['trxn_result_code']) {
+        return self::error($mpgResponse);
+      }
+      else {
+        return self::error('No reply from server - check your settings &/or try again');
+      }
+    }
+    /* Check for application errors */
+    $result = self::checkResult($mpgResponse);
+    if (is_a($result, 'CRM_Core_Error')) {
+      return $result;
+    }
+
+    /* Success */
+    $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
+    $params['trxn_id'] = $mpgResponse->getTxnNumber();
+    $params['gross_amount'] = $mpgResponse->getTransAmount();
+
+    return $params;
+  }
+}
