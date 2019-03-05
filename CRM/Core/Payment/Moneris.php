@@ -1,5 +1,7 @@
 <?php
 
+require_once 'CRM/Moneris/mpgClasses.php';
+
 /**
  * @author Alan Dixon
  *
@@ -78,8 +80,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       return self::error('Invalid currency selection, must be $CAD');
     }
     $isRecur =  CRM_Utils_Array::value('is_recur', $params) && $params['contributionRecurID'];
-    // require moneris supplied api library
-    require_once 'CRM/Moneris/mpgClasses.php';
 
     /* unused params: cvv not yet implemented, payment action ingored (should test for 'Sale' value?)
         [cvv2] => 000
@@ -342,7 +342,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $txnArray = [
       'type'=>'refund',
       'txn_number'=> $params['trxn_id'], // financial.trxn_id of the original payment
-      'order_id'=> $params['invoiceID'], // contribution's invoice ID
+      'order_id'=> $params['invoice_id'], // contribution's invoice ID
       'amount'=> sprintf('%01.2f', $params['amount']),
       'crypt_type'=>'7',
       'cust_id' => $params['contactID'],
@@ -353,10 +353,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     // create a mpgRequest object passing the transaction object created
     $mpgRequest = new mpgRequest($mpgTxn);
-    $mpgRequest->setProcCountryCode($params['currency']); //"US" for sending transaction to US environment
 
     // create mpgHttpsPost object which does an https post
-    $mpgHttpPost  = new mpgHttpsPost($store_id, $api_token, $mpgRequest);
+    $mpgHttpPost  = new mpgHttpsPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgRequest, $this->_profile['server']);
 
     // get an mpgResponse object
     $mpgResponse = $mpgHttpPost->getMpgResponse();
