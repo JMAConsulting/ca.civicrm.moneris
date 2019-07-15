@@ -6,4 +6,10 @@
     <title>MonerisStatus</title>
     <access_arguments>access CiviCRM</access_arguments>
   </item>
+  <item>
+    <path>civicrm/moneris/refund</path>
+    <page_callback>CRM_Moneris_Form_Refund</page_callback>
+    <title>Refund</title>
+    <access_arguments>access CiviCRM</access_arguments>
+  </item>
 </menu>
