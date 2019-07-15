@@ -6,17 +6,17 @@
 return array (
   0 => 
   array (
-    'name' => 'Cron:Job.MonerisRecurringContributions',
+    'name' => 'Cron:Job.Monerisvaultrecurringcontributions',
     'entity' => 'Job',
     'params' => 
     array (
       'version' => 3,
-      'name' => 'Moneris Recurring Contributions',
-      'description' => 'Generate contribution records for Moneris PAR',
+      'name' => 'Moneris Recurring Contributions using Vault API',
       'run_frequency' => 'Daily',
       'api_entity' => 'Job',
-      'api_action' => 'MonerisRecurringContributions',
-      'parameters' => '',
+      'api_action' => 'monerisvaultrecurringcontributions',
+      'parameters' => 'payment_processor_id=[id] required payment_processor_method=[live or test] required',
+      'is_active' => 1,
     ),
   ),
 );

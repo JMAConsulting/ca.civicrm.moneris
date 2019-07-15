@@ -26,9 +26,9 @@ function civicrm_api3_job_Monerisvaultrecurringcontributions($params) {
 
   // option to update amount and taxes by going through all line items
   // require taxes enabled and extension cdntaxcalculator for taxes updates
-  if ($params['update_amounts_and_taxes'] && !class_exists('CRM_Cdntaxcalculator_BAO_CDNTaxes')) {
-    throw new CRM_Core_Exception(ts('cdntaxcalculator extension must be enabled to run with params update_amounts_and_taxes=1'));
-  }
+  /* if ($params['update_amounts_and_taxes'] && !class_exists('CRM_Cdntaxcalculator_BAO_CDNTaxes')) { */
+  /*   throw new CRM_Core_Exception(ts('cdntaxcalculator extension must be enabled to run with params update_amounts_and_taxes=1')); */
+  /* } */
 
   // FIXME: CiviCRM send receipt before the payment and the amount seems wrong
   // until we fix this, just throw an exception
