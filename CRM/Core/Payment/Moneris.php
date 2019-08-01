@@ -90,6 +90,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($params['currencyID'] != 'CAD') {
       return CRM_Moneris_Utils::error('Invalid currency selection, must be $CAD');
     }
+    if (CRM_Utils_Array::value('is_recur', $params) && empty($params['contributionRecurID']) && !empty($params['contributionID'])) {
+      $params['contributionRecurID'] = CRM_Core_DAO::singleValueQuery("SELECT contribution_recur_id FROM civicrm_contribution WHERE id = " . $params['contributionID']);
+    }
     $isRecur =  CRM_Utils_Array::value('is_recur', $params) && $params['contributionRecurID'];
     // require moneris supplied api library
     require_once 'CRM/Moneris/mpgClasses.php';
@@ -267,14 +270,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       // fix next date to take allow days into account
       // days at which we want to make the recurring payment
       // FIXME: should be a setting
-      $allow_days = array(15);
+      /* $allow_days = array(15);
       if (!empty($next_sched_contribution_date)) {
         if (max($allow_days) > 0) {
           $init_time = strtotime($next_sched_contribution_date);
           $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
           $next_sched_contribution_date = date('Ymd', $from_time) . '030000';
         }
-      }
+      } */
 
       // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;

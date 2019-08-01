@@ -131,7 +131,7 @@ WHERE
   $sql .= ' AND (DATE(cr.next_sched_contribution_date) <= CURDATE()
                  OR (cr.next_sched_contribution_date IS NULL AND DATE(cr.start_date) <= CURDATE()))';
   // testing before mass processing
-  $sql .= " LIMIT 1";
+  // $sql .= " LIMIT 1";
 
   $paymentProcessor = CRM_Financial_BAO_PaymentProcessor::getPayment($params['payment_processor_id'], $params['payment_processor_mode']);
   $counter = 0;
