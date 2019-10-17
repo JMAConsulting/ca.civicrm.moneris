@@ -90,6 +90,9 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($params['currencyID'] != 'CAD') {
       return CRM_Moneris_Utils::error('Invalid currency selection, must be $CAD');
     }
+    if (CRM_Utils_Array::value('is_recur', $params) && empty($params['contributionRecurID']) && !empty($params['contributionID'])) {
+      $params['contributionRecurID'] = CRM_Core_DAO::singleValueQuery("SELECT contribution_recur_id FROM civicrm_contribution WHERE id = " . $params['contributionID']);
+    }
     $isRecur =  CRM_Utils_Array::value('is_recur', $params) && $params['contributionRecurID'];
     // require moneris supplied api library
     require_once 'CRM/Moneris/mpgClasses.php';
@@ -267,14 +270,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       // fix next date to take allow days into account
       // days at which we want to make the recurring payment
       // FIXME: should be a setting
-      $allow_days = array(15);
+      /* $allow_days = array(15);
       if (!empty($next_sched_contribution_date)) {
         if (max($allow_days) > 0) {
           $init_time = strtotime($next_sched_contribution_date);
           $from_time = _moneris_contributionrecur_next($init_time,$allow_days);
           $next_sched_contribution_date = date('Ymd', $from_time) . '030000';
         }
-      }
+      } */
 
       // FIXME: it is not saved anywhere...
       $params['payment_token_id'] = $token_id;
@@ -326,8 +329,16 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     }
 
     Civi::log()->debug('refund -- ' . print_r($contribution,1));
+    if ($contribution['contribution_status_id'] == 9) {
+      $participantId = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantPayment', $params['contribution_id'], 'participant_id', 'contribution_id');
+      $entityType = $participantId ? 'participant' : 'contribution';
+      $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($params['contribution_id'], 'contribution');
+      if (!empty($paymentInfo['refund_due'])) {
+        $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentInfo['refund_due']), NULL, '%a');
+      }
+    }
     // only completed payment can be refund
-    if ($contribution['contribution_status_id'] != 1) {
+    elseif ($contribution['contribution_status_id'] != 1) {
       // display an error ?
       throw new \Civi\Payment\Exception\PaymentProcessorException('Only completed payment can be refunded');
     }
@@ -354,9 +365,11 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     );
     $mpgTxn = new mpgTransaction($txnArray);
 
+
     Civi::log()->debug('refund -- ' . print_r($mpgTxn,1));
     $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn, $this->_profile['server']);
-    if (is_a($result, 'CRM_Core_Error')) {
+//print_r($result);exit;
+    if (is_a($result, 'CRM_Core_Error') && $contribution['contribution_status_id'] != 9) {
       throw new \Civi\Payment\Exception\PaymentProcessorException(CRM_Core_Error::getMessages($result));
     }
 

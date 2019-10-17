@@ -1,7 +1,7 @@
 <?php
 
-use CRM_ProvInvoice_ExtensionUtil as E;
-
+//use CRM_ProvInvoice_ExtensionUtil as E;
+use CRM_Moneris_ExtensionUtil as E;
 class CRM_Moneris_Utils {
 
   /**
