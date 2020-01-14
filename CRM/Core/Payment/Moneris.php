@@ -328,7 +328,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       throw new \Civi\Payment\Exception\PaymentProcessorException($e->getMessage());
     }
 
-    Civi::log()->debug('refund -- ' . print_r($contribution,1));
     if ($contribution['contribution_status_id'] == 9) {
       $participantId = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantPayment', $params['contribution_id'], 'participant_id', 'contribution_id');
       $entityType = $participantId ? 'participant' : 'contribution';
@@ -380,8 +379,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     Civi::log()->debug('refund -- ' . print_r($mpgTxn,1));
     $result = CRM_Moneris_Utils::mpgHttpsRequestPost($this->_profile['storeid'], $this->_profile['apitoken'], $mpgTxn, $this->_profile['server']);
-//print_r($result);exit;
-    if (is_a($result, 'CRM_Core_Error') && $contribution['contribution_status_id'] != 9) {
+    if (is_a($result, 'CRM_Core_Error')) {
       throw new \Civi\Payment\Exception\PaymentProcessorException(CRM_Core_Error::getMessages($result));
     }
 
@@ -391,8 +389,26 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $params['trxn_result_code'] = (integer) $mpgResponse->getResponseCode();
     $params['trxn_id'] = $mpgResponse->getTxnNumber();
     $params['gross_amount'] = $mpgResponse->getTransAmount();
-    Civi::log()->debug('refund success -- ' . print_r($params,1));
+    // Now create Payments for refund process.
+    $trxnsData = $params;
+    $trxnsData['participant_id'] = $participantId;
+    $trxnsData['contribution_id'] = $params['contribution_id'];
+    $trxnsData['is_send_contribution_notification'] = FALSE;
+    $trxnsData['total_amount'] = -$contribution['total_amount'];
+    $trxnsData['trxn_result_code'] = $params['trxn_result_code'];
+    $trxnsData['trxn_date'] = $result['TransDate'] . ' ' . $reult['TransTime'];
+    civicrm_api3('Payment', 'create', $trxnsData);
 
+    $currentContribution = civicrm_api3('Contribution', 'getsingle ['id' => $params['contribution_id']]);
+    // If the Contribution total is now 0 set the status to be refunded.
+    if ($currentContribution['total_amount'] == 0) {
+      civicrm_api3('Contribution', 'create', array(
+        'contact_id' => $this->_contactID,
+        'contribution_id' => $this->_id,
+        'contribution_status_id' => 7, // refund
+        'cancel_date' => date('Y-m-d H:i:s'),
+      ));
+    }
     return $params;
   }
 
