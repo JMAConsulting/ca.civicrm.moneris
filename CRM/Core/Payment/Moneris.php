@@ -396,10 +396,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $trxnsData['is_send_contribution_notification'] = FALSE;
     $trxnsData['total_amount'] = -$contribution['total_amount'];
     $trxnsData['trxn_result_code'] = $params['trxn_result_code'];
-    $trxnsData['trxn_date'] = $result['TransDate'] . ' ' . $reult['TransTime'];
+    $trxnsData['trxn_date'] = $result->TransDate . ' ' . $result->TransTime;
     civicrm_api3('Payment', 'create', $trxnsData);
 
-    $currentContribution = civicrm_api3('Contribution', 'getsingle ['id' => $params['contribution_id']]);
+    $currentContribution = civicrm_api3('Contribution', 'getsingle', ['id' => $params['contribution_id']]);
     // If the Contribution total is now 0 set the status to be refunded.
     if ($currentContribution['total_amount'] == 0) {
       civicrm_api3('Contribution', 'create', array(
