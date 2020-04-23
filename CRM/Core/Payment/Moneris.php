@@ -332,14 +332,21 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($contribution['contribution_status_id'] == 9) {
       $participantId = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantPayment', $params['contribution_id'], 'participant_id', 'contribution_id');
       $entityType = $participantId ? 'participant' : 'contribution';
-      $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($params['contribution_id'], $entityType);
+      if ($participantId) {
+        $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($participantId, 'participant');
+      }
+      else {
+        $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($params['contribution_id'], 'contribution');
+      }
       if (!empty($paymentInfo['refund_due'])) {
-        $contribution['total_amount'] = $paymentInfo['refund_due'];
-        $result = CRM_Contribute_BAO_Contribution::recordAdditionalPayment($params['contribution_id'], $contribution, 'refund', $participantId);
-
-        $p = ['id' => $params['contribution_id']];
-        $contribution = CRM_Contribute_BAO_Contribution::retrieve($p, $defaults, $p);
-        CRM_Contribute_BAO_Contribution::addPayments([$contribution], $contribution['contribution_status_id']);
+        $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentInfo['refund_due']), NULL, '%a');
+        $trxnsData = $params;
+        $trxnsData['participant_id'] = $participantId;
+        $trxnsData['contribution_id'] = $params['contribution_id'];
+        $trxnsData['is_send_contribution_notification'] = FALSE;
+        $trxnsData['total_amount'] = (float) $paymentInfo['refund_due'];
+        Civi::log()->debug('trxnsData -- ' . print_r($trxnsData, 1));
+        civicrm_api3('Payment', 'create', $trxnsData);
       }
     }
     // only completed payment can be refund
