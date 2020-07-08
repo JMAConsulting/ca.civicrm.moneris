@@ -331,19 +331,14 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($contribution['contribution_status_id'] == 9) {
       $participantId = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantPayment', $params['contribution_id'], 'participant_id', 'contribution_id');
       $entityType = $participantId ? 'participant' : 'contribution';
-      if ($participantId) {
-        $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($participantId, 'participant');
-      }
-      else {
-        $paymentInfo = CRM_Core_BAO_FinancialTrxn::getPartialPaymentWithType($params['contribution_id'], 'contribution');
-      }
-      if (!empty($paymentInfo['refund_due'])) {
-        $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentInfo['refund_due']), NULL, '%a');
+      $paymentVal = CRM_Contribute_BAO_Contribution::getContributionBalance($params['contribution_id']);
+      if ($paymentVal < 0)) {
+        $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentVal), NULL, '%a');
         $trxnsData = $params;
         $trxnsData['participant_id'] = $participantId;
         $trxnsData['contribution_id'] = $params['contribution_id'];
         $trxnsData['is_send_contribution_notification'] = FALSE;
-        $trxnsData['total_amount'] = (float) $paymentInfo['refund_due'];
+        $trxnsData['total_amount'] = (float) $paymentVal;
         Civi::log()->debug('trxnsData -- ' . print_r($trxnsData, 1));
         civicrm_api3('Payment', 'create', $trxnsData);
       }
@@ -363,7 +358,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
 
     require_once 'CRM/Moneris/mpgClasses.php';
     // try to do a refund on the token and transaction
-    $txnArray=array(
+    $txnArray = [
       'type' => $type,
       'txn_number'=> $contribution['trxn_id'],
       'order_id'=> $contribution['invoice_id'],
@@ -373,7 +368,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       'crypt_type'=> '7',
       //'cust_id' => 'Customer ID',
       'dynamic_descriptor' => 'Refund from CiviCRM'
-    );
+    ];
     $mpgTxn = new mpgTransaction($txnArray);
 
 
