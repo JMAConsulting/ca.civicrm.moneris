@@ -332,7 +332,7 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       $participantId = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantPayment', $params['contribution_id'], 'participant_id', 'contribution_id');
       $entityType = $participantId ? 'participant' : 'contribution';
       $paymentVal = CRM_Contribute_BAO_Contribution::getContributionBalance($params['contribution_id']);
-      if ($paymentVal < 0)) {
+      if ($paymentVal < 0) {
         $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentVal), NULL, '%a');
         $trxnsData = $params;
         $trxnsData['participant_id'] = $participantId;

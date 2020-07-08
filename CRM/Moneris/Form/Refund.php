@@ -29,7 +29,7 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
     // Check permission for action.
     if (!CRM_Core_Permission::checkActionPermission('CiviContribute', CRM_Core_Action::UPDATE)) {
       // @todo replace with throw new CRM_Core_Exception().
-      CRM_Core_Error::fatal(ts('You do not have permission to access this page.'));
+      CRM_Core_Error::statusBounce(ts('You do not have permission to access this page.'));
     }
 
     $this->_id = CRM_Utils_Request::retrieve('id', 'Positive', $this, TRUE);
