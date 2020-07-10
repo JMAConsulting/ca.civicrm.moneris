@@ -334,19 +334,22 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
       $paymentVal = CRM_Contribute_BAO_Contribution::getContributionBalance($params['contribution_id']);
       if ($paymentVal < 0) {
         $contribution['total_amount'] = CRM_Utils_Money::format(abs($paymentVal), NULL, '%a');
-        $trxnsData = $params;
-        $trxnsData['participant_id'] = $participantId;
-        $trxnsData['contribution_id'] = $params['contribution_id'];
-        $trxnsData['is_send_contribution_notification'] = FALSE;
-        $trxnsData['total_amount'] = (float) $paymentVal;
-        Civi::log()->debug('trxnsData -- ' . print_r($trxnsData, 1));
-        civicrm_api3('Payment', 'create', $trxnsData);
+        $paymentId = FALSE;
       }
     }
     // only completed payment can be refund
     elseif ($contribution['contribution_status_id'] != 1) {
       // display an error ?
       throw new \Civi\Payment\Exception\PaymentProcessorException('Only completed payment can be refunded');
+    }
+    else {
+      $payments = civicrm_api3('Payment', 'get', ['entity_id' => $params['contribution_id']]);
+      if (!empty($payments['count']) && $payments['count'] == 1) {
+        $paymentId = $payments['id'];
+      }
+      else {
+        $paymentId = FALSE;
+      }
     }
 
     // FIXME: we might want to support void from payment that are not yet on the payer billing (won't even appear)
@@ -391,16 +394,22 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     $trxnsData['is_send_contribution_notification'] = FALSE;
     $trxnsData['total_amount'] = -$contribution['total_amount'];
     $trxnsData['trxn_result_code'] = $params['trxn_result_code'];
-    $trxnsData['trxn_date'] = $result->TransDate . ' ' . $result->TransTime;
-    civicrm_api3('Payment', 'create', $trxnsData);
+    $trxnsData['trxn_date'] = $mpgResponse->getTransDate() . ' ' . $mpgResponse->getTransTime();
+    $trxnsData['payment_processor_id'] = $this->_paymentProcessor['id'];
+    if (!empty($paymentId)) {
+      $trxnsData['id'] = $paymentId;
+      civicrm_api3('Payment', 'cancel', $trxnsData);
+    }
+    else {
+      civicrm_api3('Payment', 'create', $trxnsData);
+    }
 
-    $currentContribution = civicrm_api3('Contribution', 'getsingle', ['id' => $params['contribution_id']]);
     // If the Contribution total is now 0 set the status to be refunded.
-    if ($currentContribution['total_amount'] == 0) {
+    if ($contribution['contribution_status_id'] == 1 && ((float) CRM_Core_BAO_FinancialTrxn::getTotalPayments($params['contribution_id'], TRUE) === 0.0)) {
       civicrm_api3('Contribution', 'create', array(
-        'contact_id' => $this->_contactID,
-        'contribution_id' => $this->_id,
+        'id' => $params['contribution_id'],
         'contribution_status_id' => 7, // refund
+        'is_post_payment_create' => TRUE,
         'cancel_date' => date('Y-m-d H:i:s'),
       ));
     }
