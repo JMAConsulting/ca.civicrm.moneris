@@ -1,5 +1,8 @@
 <?php
 
+use Civi\Payment\Exception\PaymentProcessorException;
+use Civi\Payment\PropertyBag;
+
 /**
  * @author Alan Dixon
  *
@@ -81,7 +84,12 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   }
 
   function doDirectPayment(&$params) {
-//print_r($params); die();
+    $propertyBag = PropertyBag::cast($params);
+
+    if ($propertyBag->getIsRecur()) {
+      $throwAnENoticeIfNotSetAsTheseAreRequired = $propertyBag->getRecurFrequencyInterval() . $propertyBag->getRecurFrequencyUnit();
+    }
+    //print_r($params); die();
     // watchdog('moneris_civicrm_ca', 'Params: <pre>!params</pre>', array('!params' => print_r($params, TRUE)), WATCHDOG_NOTICE);
     //make sure i've been called correctly ...
     if (!$this->_profile) {
@@ -90,6 +98,10 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
     if ($params['currencyID'] != 'CAD') {
       return CRM_Moneris_Utils::error('Invalid currency selection, must be $CAD');
     }
+    CRM_Utils_Hook::alterPaymentProcessorParams($this,
+      $params,
+      $propertyBag
+    );
     if (CRM_Utils_Array::value('is_recur', $params) && empty($params['contributionRecurID']) && !empty($params['contributionID'])) {
       $params['contributionRecurID'] = CRM_Core_DAO::singleValueQuery("SELECT contribution_recur_id FROM civicrm_contribution WHERE id = " . $params['contributionID']);
     }
