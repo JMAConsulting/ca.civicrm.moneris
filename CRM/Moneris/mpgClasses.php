@@ -2237,7 +2237,7 @@ class mpgCustInfo
         	{
           		$data=$template[$tag];
 
-          		if(! count($this->level3data[$tag]))
+			if(empty($this->level3data[$tag]))
            		{
             		continue;
            		}

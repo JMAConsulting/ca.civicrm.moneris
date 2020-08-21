@@ -2,6 +2,7 @@
 
 use Civi\Payment\Exception\PaymentProcessorException;
 use Civi\Payment\PropertyBag;
+define('MONERIS_RECURRING_PROCESS_NOW', 1);
 
 /**
  * @author Alan Dixon
@@ -20,8 +21,6 @@ class CRM_Core_Payment_Moneris extends CRM_Core_Payment {
   CONST MONERIS_API_TRANSACTION_TYPE_CAPTURE = '02';
   CONST MONERIS_API_TRANSACTION_TYPE_REFUND = '04';
   CONST MONERIS_DO_RECURRING = 1;
-
-  CONST MONERIS_RECURRING_PROCESS_NOW = 1;
 
   /**
    * We only need one instance of this object. So we use the singleton
