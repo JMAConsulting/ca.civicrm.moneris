@@ -16,11 +16,10 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
   protected $_contactID;
 
   /**
-   * Test or live mode
+   * Payment Processor ID
    * @var object
    */
-  protected $_isTest;
-
+  protected $_paymentProcessorID;
 
   /**
    * Set variables up before form is built.
@@ -34,12 +33,20 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
 
     $this->_id = CRM_Utils_Request::retrieve('id', 'Positive', $this, TRUE);
     $this->_contactID = CRM_Utils_Request::retrieve('cid', 'Positive', $this, TRUE);
-    parent::preProcess();
 
-    $this->_isTest = 0;
-    if ($this->_action & CRM_Core_Action::PREVIEW) {
-      $this->_isTest = 1;
+    $this->_paymentProcessorID = civicrm_api3('EntityFinancialTrxn', 'get', [
+      'sequential' => 1,
+      'return' => ["financial_trxn_id.payment_processor_id"],
+      'entity_table' => "civicrm_contribution",
+      'entity_id' => $this->_id,
+      'options' => ['limit' => 1, 'sort' => "id DESC"],
+    ])['values'][0]['financial_trxn_id.payment_processor_id'];
+
+    if (empty($this->_paymentProcessorID)) {
+      CRM_Core_Error::statusBounce(ts('No payment processor found for this contribution'));
     }
+
+    parent::preProcess();
   }
 
   public function buildQuickForm() {
@@ -61,9 +68,8 @@ class CRM_Moneris_Form_Refund extends CRM_Core_Form {
   }
 
   public function postProcess() {
-
     // FIXME: doesn't work for multiple Moneris Processors
-    $payment = Civi\Payment\System::singleton()->getByName('Moneris', $this->_isTest);
+    $payment = Civi\Payment\System::singleton()->getById($this->_paymentProcessorID);
 
     $urlParams = "reset=1&cid={$this->_contactID}&selectedChild=contribute";
     $url = CRM_Utils_System::url('civicrm/contact/view', $urlParams);
